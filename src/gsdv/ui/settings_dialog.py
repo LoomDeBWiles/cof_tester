@@ -29,6 +29,7 @@ from gsdv.config.preferences import (
     TorqueUnit,
     UserPreferences,
 )
+from gsdv.processing.filters import MAX_CUTOFF_HZ, MIN_CUTOFF_HZ
 
 
 class ConnectionTab(QWidget):
@@ -228,10 +229,10 @@ class DisplayTab(QWidget):
         filter_layout.addRow(self._filter_enabled)
 
         self._filter_cutoff = QDoubleSpinBox()
-        self._filter_cutoff.setRange(1.0, 1000.0)
+        self._filter_cutoff.setRange(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ)
         self._filter_cutoff.setSuffix(" Hz")
         self._filter_cutoff.setDecimals(1)
-        self._filter_cutoff.setValue(120.0)
+        self._filter_cutoff.setValue(MAX_CUTOFF_HZ)
         filter_layout.addRow("Cutoff Frequency:", self._filter_cutoff)
 
         layout.addWidget(filter_group)

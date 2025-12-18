@@ -352,7 +352,11 @@ class MultiChannelPlot(QWidget):
         if self._buffer is None:
             return None
 
-        data = self._buffer.get_latest(1)
+        # MultiResolutionBuffer has get_window_data; use its raw ring for latest values
+        if hasattr(self._buffer, "get_window_data"):
+            data = self._buffer.raw.get_latest(1)
+        else:
+            data = self._buffer.get_latest(1)
         if data is None:
             return None
 

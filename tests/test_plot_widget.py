@@ -394,3 +394,69 @@ class TestMultiChannelPlotYAxisScaling:
         widget.set_y_range(-10.0, 10.0)
         widget.enable_y_autoscale()
         assert widget.get_y_range() is None
+
+
+class TestMultiChannelPlotGetLatestValues:
+    """Tests for get_latest_values functionality."""
+
+    def test_get_latest_values_returns_none_without_buffer(self, qtbot):
+        """get_latest_values returns None when no buffer is set."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        assert widget.get_latest_values() is None
+
+    def test_get_latest_values_with_ring_buffer(self, qtbot, populated_buffer):
+        """get_latest_values works with RingBuffer."""
+        widget = MultiChannelPlot(buffer=populated_buffer)
+        qtbot.addWidget(widget)
+        widget.set_calibration(10.0, 100.0)
+        widget.set_units("N", "Nm")
+
+        result = widget.get_latest_values()
+
+        assert result is not None
+        assert len(result) == 6
+        # Last sample in populated_buffer: counts=(199, 299, 399, 499, 599, 699)
+        # Force channels divided by 10, torque channels divided by 100
+        assert result["Fx"] == (19.9, "N")
+        assert result["Fy"] == (29.9, "N")
+        assert result["Fz"] == (39.9, "N")
+        assert result["Tx"] == (4.99, "Nm")
+        assert result["Ty"] == (5.99, "Nm")
+        assert result["Tz"] == (6.99, "Nm")
+
+    def test_get_latest_values_with_multi_resolution_buffer(self, qtbot):
+        """get_latest_values works with MultiResolutionBuffer."""
+        buffer = MultiResolutionBuffer(raw_capacity=1000, sample_rate_hz=1000.0)
+        for i in range(50):
+            buffer.append(
+                t_monotonic_ns=1_000_000_000_000 + i * 1_000_000,
+                rdt_sequence=i,
+                ft_sequence=i,
+                status=0,
+                counts=(100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 600 + i),
+            )
+
+        widget = MultiChannelPlot(buffer=buffer)
+        qtbot.addWidget(widget)
+        widget.set_calibration(10.0, 100.0)
+        widget.set_units("N", "Nm")
+
+        result = widget.get_latest_values()
+
+        assert result is not None
+        assert len(result) == 6
+        # Last sample: counts=(149, 249, 349, 449, 549, 649)
+        assert result["Fx"] == (14.9, "N")
+        assert result["Fy"] == (24.9, "N")
+        assert result["Fz"] == (34.9, "N")
+        assert result["Tx"] == (4.49, "Nm")
+        assert result["Ty"] == (5.49, "Nm")
+        assert result["Tz"] == (6.49, "Nm")
+
+    def test_get_latest_values_returns_none_for_empty_buffer(self, qtbot):
+        """get_latest_values returns None when buffer is empty."""
+        buffer = RingBuffer(capacity=100)
+        widget = MultiChannelPlot(buffer=buffer)
+        qtbot.addWidget(widget)
+        assert widget.get_latest_values() is None
