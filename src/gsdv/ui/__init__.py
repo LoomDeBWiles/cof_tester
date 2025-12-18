@@ -7,6 +7,7 @@ from gsdv.ui.main_window import (
     NumericDisplay,
     RecordingControls,
 )
+from gsdv.ui.settings_dialog import SettingsDialog
 
 __all__ = [
     "ChannelSelector",
@@ -14,4 +15,5 @@ __all__ = [
     "MainWindow",
     "NumericDisplay",
     "RecordingControls",
+    "SettingsDialog",
 ]
