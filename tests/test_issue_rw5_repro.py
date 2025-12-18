@@ -1,6 +1,10 @@
 
 import pytest
-pytest.importorskip("PySide6")
+pytest.importorskip(
+    "PySide6.QtWidgets",
+    reason="PySide6 Qt widgets (libEGL) not available",
+    exc_type=ImportError,
+)
 from PySide6.QtWidgets import QApplication
 from gsdv.ui.main_window import MainWindow, TimeWindowSelector
 

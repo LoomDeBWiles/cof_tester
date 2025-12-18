@@ -10,9 +10,9 @@ from dataclasses import dataclass, replace
 from typing import Callable, Optional
 
 import numpy as np
-from numpy.typing import NDArray
 
 from gsdv.models import CalibrationInfo, SampleRecord
+from gsdv.processing.filters import FilterPipeline, MAX_CUTOFF_HZ
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +70,8 @@ class ProcessingEngine:
 
     1. Soft zero offset subtraction (optional, per BL-3)
     2. Counts to engineering units conversion (BL-1)
-    3. Routing to visualization and logger queues
+    3. Optional low-pass filtering (BL-4)
+    4. Routing to visualization and logger queues
 
     Thread model:
     - Processing runs in a dedicated thread to avoid blocking acquisition
@@ -91,6 +92,9 @@ class ProcessingEngine:
     def __init__(
         self,
         calibration: CalibrationInfo,
+        sample_rate_hz: float = 1000.0,
+        filter_enabled: bool = False,
+        filter_cutoff_hz: float = MAX_CUTOFF_HZ,
         input_queue_size: int = 1000,
         output_queue_size: int = 1000,
     ) -> None:
@@ -98,12 +102,24 @@ class ProcessingEngine:
 
         Args:
             calibration: Calibration data with cpf/cpt values.
+            sample_rate_hz: Input sample rate in Hz (used for digital filtering).
+            filter_enabled: Whether the low-pass filter is enabled.
+            filter_cutoff_hz: Low-pass cutoff frequency in Hz.
             input_queue_size: Max size of input queue (samples dropped if full).
             output_queue_size: Max size of logger output queue.
         """
         self._calibration = calibration
         self._soft_zero: Optional[SoftZeroOffsets] = None
         self._soft_zero_lock = threading.Lock()
+
+        # Optional filtering (BL-4)
+        self._filter_lock = threading.Lock()
+        self._filter_pipeline = FilterPipeline(
+            enabled=filter_enabled,
+            cutoff_hz=filter_cutoff_hz,
+            sample_rate_hz=sample_rate_hz,
+            num_channels=6,
+        )
 
         # Input queue for samples from acquisition engine
         self._input_queue: queue.Queue[SampleRecord] = queue.Queue(maxsize=input_queue_size)
@@ -154,6 +170,18 @@ class ProcessingEngine:
         with self._soft_zero_lock:
             return self._soft_zero
 
+    @property
+    def filter_enabled(self) -> bool:
+        """Whether the low-pass filter is enabled."""
+        with self._filter_lock:
+            return self._filter_pipeline.enabled
+
+    @property
+    def filter_cutoff_hz(self) -> float:
+        """Current low-pass cutoff frequency in Hz."""
+        with self._filter_lock:
+            return self._filter_pipeline.cutoff_hz
+
     def set_calibration(self, calibration: CalibrationInfo) -> None:
         """Update calibration data.
 
@@ -172,6 +200,30 @@ class ProcessingEngine:
         """
         with self._soft_zero_lock:
             self._soft_zero = offsets
+
+    def set_filter_enabled(self, enabled: bool) -> None:
+        """Enable or disable the low-pass filter (BL-4).
+
+        When enabling, the filter is primed on the next sample to avoid
+        a startup transient.
+        """
+        with self._filter_lock:
+            self._filter_pipeline.enabled = enabled
+
+    def set_filter_cutoff_hz(self, cutoff_hz: float) -> None:
+        """Set the low-pass filter cutoff frequency in Hz (FR-26)."""
+        with self._filter_lock:
+            self._filter_pipeline.cutoff_hz = cutoff_hz
+
+    def set_sample_rate_hz(self, sample_rate_hz: float) -> None:
+        """Set the sample rate used for filter coefficient calculation."""
+        with self._filter_lock:
+            self._filter_pipeline.sample_rate_hz = sample_rate_hz
+
+    def reset_filter(self) -> None:
+        """Reset filter state (use when starting a new stream)."""
+        with self._filter_lock:
+            self._filter_pipeline.reset()
 
     def capture_soft_zero(self, sample: SampleRecord) -> SoftZeroOffsets:
         """Capture current counts as soft zero offsets.
@@ -216,6 +268,9 @@ class ProcessingEngine:
                 raise RuntimeError("Processing engine already running")
             self._running = True
 
+        # New stream: reset filter state so the first sample is bumpless.
+        self.reset_filter()
+
         self._stop_event.clear()
         self._processing_thread = threading.Thread(
             target=self._processing_loop,
@@ -239,7 +294,8 @@ class ProcessingEngine:
     def process_sample(self, sample: SampleRecord) -> SampleRecord:
         """Process a single sample synchronously.
 
-        Applies soft zero offsets and converts to engineering units.
+        Applies soft zero offsets, converts to engineering units, and applies
+        optional low-pass filtering.
         Does not route to queues or callbacks.
 
         Args:
@@ -269,12 +325,19 @@ class ProcessingEngine:
         # Convert to engineering units using calibration (BL-1)
         force_N, torque_Nm = self._calibration.convert_counts_to_si(adjusted_counts)
 
+        values = np.empty(6, dtype=np.float64)
+        values[:3] = force_N
+        values[3:] = torque_Nm
+
+        with self._filter_lock:
+            filtered = self._filter_pipeline.apply(values)
+
         # Create new sample with converted values
         return replace(
             sample,
             counts=adjusted_counts,
-            force_N=(float(force_N[0]), float(force_N[1]), float(force_N[2])),
-            torque_Nm=(float(torque_Nm[0]), float(torque_Nm[1]), float(torque_Nm[2])),
+            force_N=(float(filtered[0]), float(filtered[1]), float(filtered[2])),
+            torque_Nm=(float(filtered[3]), float(filtered[4]), float(filtered[5])),
         )
 
     def submit_sample(self, sample: SampleRecord) -> bool:

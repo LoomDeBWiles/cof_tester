@@ -251,6 +251,9 @@ class TestDiskFullMidRecording:
         error = DiskFullError(path="/mnt/full/file.csv")
         assert error.recovery == RecoveryAction.CHOOSE_DIRECTORY
 
+    @pytest.mark.filterwarnings(
+        "ignore:Exception in thread AsyncFileWriter:pytest.PytestUnhandledThreadExceptionWarning"
+    )
     def test_async_file_writer_handles_disk_full(self, tmp_path: Path) -> None:
         """AsyncFileWriter raises DiskFullError when underlying write fails with ENOSPC."""
         from gsdv.logging.writer import AsyncFileWriter, WriterState

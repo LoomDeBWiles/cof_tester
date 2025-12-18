@@ -169,6 +169,26 @@ class LowPassFilter:
         self._z1.fill(0.0)
         self._z2.fill(0.0)
 
+    def prime(
+        self, x: NDArray[np.float64] | tuple[float, ...] | list[float]
+    ) -> None:
+        """Prime filter state to a steady value for artifact-free startup.
+
+        Sets internal delay elements so that a constant input equal to `x`
+        produces an immediate output equal to `x` (no startup transient).
+        """
+        x_arr = np.asarray(x, dtype=np.float64)
+        if x_arr.shape != (self._num_channels,):
+            raise ValueError(
+                f"Input must have shape ({self._num_channels},), got {x_arr.shape}"
+            )
+
+        c = self._coeffs
+        # Direct Form II Transposed steady state for DC input:
+        # z1 = (1 - b0) * x, z2 = (b2 - a2) * x
+        self._z1[:] = (1.0 - c.b0) * x_arr
+        self._z2[:] = (c.b2 - c.a2) * x_arr
+
     def process_sample(
         self, x: NDArray[np.float64] | tuple[float, ...] | list[float]
     ) -> NDArray[np.float64]:
@@ -282,6 +302,8 @@ class FilterPipeline:
         self._sample_rate_hz = sample_rate_hz
         self._num_channels = num_channels
 
+        self._needs_prime = False
+
         # Create filter if enabled and parameters are valid
         self._filter: LowPassFilter | None = None
         if enabled:
@@ -294,6 +316,7 @@ class FilterPipeline:
             sample_rate_hz=self._sample_rate_hz,
             num_channels=self._num_channels,
         )
+        self._needs_prime = True
 
     @property
     def enabled(self) -> bool:
@@ -334,9 +357,13 @@ class FilterPipeline:
                 self._create_filter()
 
     def reset(self) -> None:
-        """Reset filter state."""
+        """Reset filter state.
+
+        After reset, the next input primes the filter to avoid a startup transient.
+        """
         if self._filter is not None:
             self._filter.reset()
+            self._needs_prime = True
 
     def apply(
         self, x: NDArray[np.float64] | tuple[float, ...] | list[float]
@@ -351,6 +378,10 @@ class FilterPipeline:
         """
         x_arr = np.asarray(x, dtype=np.float64)
         if self._enabled and self._filter is not None:
+            if self._needs_prime:
+                self._filter.prime(x_arr)
+                self._needs_prime = False
+                return x_arr
             return self._filter.process_sample(x_arr)
         return x_arr
 
@@ -364,5 +395,8 @@ class FilterPipeline:
             Filtered output if enabled, otherwise input unchanged.
         """
         if self._enabled and self._filter is not None:
+            if self._needs_prime and x.shape[0] > 0:
+                self._filter.prime(x[0])
+                self._needs_prime = False
             return self._filter.process_batch(x)
         return x

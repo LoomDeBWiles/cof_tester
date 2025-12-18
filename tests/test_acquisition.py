@@ -1,5 +1,6 @@
 """Tests for acquisition engine and ring buffer."""
 
+import itertools
 import socket
 import struct
 import threading
@@ -550,7 +551,9 @@ class TestAcquisitionEngineWithMockedSocket:
             (self._build_response(rdt_seq=i, fx=i * 10), ("192.168.1.100", 49152))
             for i in range(5)
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(
+            responses, itertools.repeat(socket.timeout())
+        )
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
@@ -571,7 +574,9 @@ class TestAcquisitionEngineWithMockedSocket:
             (self._build_response(rdt_seq=0), ("192.168.1.100", 49152)),
             (self._build_response(rdt_seq=5), ("192.168.1.100", 49152)),
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(
+            responses, itertools.repeat(socket.timeout())
+        )
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
@@ -602,7 +607,9 @@ class TestAcquisitionEngineWithMockedSocket:
             (self._build_response(rdt_seq=i, fx=i * 100, fy=i * 200, fz=i * 300), ("192.168.1.100", 49152))
             for i in range(10)
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(
+            responses, itertools.repeat(socket.timeout())
+        )
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
@@ -624,7 +631,9 @@ class TestAcquisitionEngineWithMockedSocket:
             (self._build_response(rdt_seq=i), ("192.168.1.100", 49152))
             for i in range(5)
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(
+            responses, itertools.repeat(socket.timeout())
+        )
 
         received_samples: list = []
 
@@ -696,12 +705,15 @@ class TestAcquisitionEngineWithMockedSocket:
         mock_socket_class.return_value = mock_sock
 
         # Alternate between OSError and timeout
-        mock_sock.recvfrom.side_effect = [
+        errors = [
             OSError("Network error"),
             socket.timeout(),
             OSError("Another error"),
             socket.timeout(),
-        ] + [socket.timeout()] * 10
+        ]
+        mock_sock.recvfrom.side_effect = itertools.chain(
+            errors, itertools.repeat(socket.timeout())
+        )
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()

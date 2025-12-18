@@ -10,6 +10,7 @@ from gsdv.processing import (
     TIER1,
     TIER2,
     TIER3,
+    MultiResolutionBuffer,
     TierStats,
     VisualizationBuffer,
     VisualizationBufferStats,
@@ -417,3 +418,58 @@ class TestTierPropagation:
         # Min should be 0, max should be 999
         assert tier3_data["counts_min"][0, 0] == 0
         assert tier3_data["counts_max"][0, 0] == 999
+
+
+class TestMultiResolutionBuffer:
+    """Tests for MultiResolutionBuffer (raw + tiers)."""
+
+    def test_selects_raw_when_window_covered(self) -> None:
+        buffer = MultiResolutionBuffer(raw_capacity=1000, sample_rate_hz=1000.0)
+        assert buffer.select_tier_for_window(1.0) == "raw"
+        assert buffer.select_tier_for_window(0.5) == "raw"
+
+    def test_selects_tier1_when_window_exceeds_raw(self) -> None:
+        buffer = MultiResolutionBuffer(raw_capacity=1000, sample_rate_hz=1000.0)
+        assert buffer.select_tier_for_window(5.0) == "tier1"
+
+    def test_get_window_data_raw_shape(self) -> None:
+        buffer = MultiResolutionBuffer(raw_capacity=1000, sample_rate_hz=1000.0)
+        for i in range(10):
+            buffer.append(
+                t_monotonic_ns=i * 1_000_000,
+                rdt_sequence=i,
+                ft_sequence=i,
+                status=0,
+                counts=(i, i, i, i, i, i),
+            )
+        data = buffer.get_window_data(0.5)
+        assert data is not None
+        assert data["kind"] == "raw"
+        assert data["tier"] == "raw"
+        assert len(data["timestamps"]) == 10
+        assert data["counts"].shape == (10, 6)
+
+    def test_get_window_data_minmax_shape_and_tier(self) -> None:
+        buffer = MultiResolutionBuffer(raw_capacity=1000, sample_rate_hz=1000.0)
+        for i in range(200):
+            buffer.append(
+                t_monotonic_ns=i * 1_000_000,
+                rdt_sequence=i,
+                ft_sequence=i,
+                status=0,
+                counts=(i, i, i, i, i, i),
+            )
+
+        data = buffer.get_window_data(5.0)
+        assert data is not None
+        assert data["kind"] == "minmax"
+        assert data["tier"] == "tier1"
+        assert data["t_ref_ns"] == 199_000_000
+        assert len(data["t_start_ns"]) == 2
+        assert len(data["t_end_ns"]) == 2
+        assert data["counts_min"].shape == (2, 6)
+        assert data["counts_max"].shape == (2, 6)
+
+    def test_memory_under_10mb(self) -> None:
+        buffer = MultiResolutionBuffer()
+        assert buffer.stats().memory_mb < 10.0

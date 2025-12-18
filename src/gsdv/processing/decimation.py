@@ -21,6 +21,8 @@ from typing import Optional
 import numpy as np
 from numpy.typing import NDArray
 
+from gsdv.acquisition.ring_buffer import RingBuffer
+
 
 @dataclass(frozen=True, slots=True)
 class TierConfig:
@@ -97,10 +99,12 @@ class _TierBuffer:
 
         # Accumulator for building current bucket
         self._accum_count = 0
+        self._accum_sample_count = 0
         self._accum_t_start: Optional[int] = None
         self._accum_t_end: Optional[int] = None
         self._accum_min: Optional[NDArray[np.int32]] = None
         self._accum_max: Optional[NDArray[np.int32]] = None
+        self._scratch_counts = np.empty(6, dtype=np.int32)
 
     @property
     def config(self) -> TierConfig:
@@ -125,17 +129,23 @@ class _TierBuffer:
             If a bucket was completed, returns (t_start_ns, t_end_ns, min, max, sample_count)
             for propagation to the next tier. Otherwise None.
         """
-        counts_arr = np.array(counts, dtype=np.int32) if not isinstance(counts, np.ndarray) else counts
+        if isinstance(counts, np.ndarray):
+            counts_arr = counts
+        else:
+            self._scratch_counts[:] = counts
+            counts_arr = self._scratch_counts
 
         if self._accum_count == 0:
             self._accum_t_start = t_ns
             self._accum_t_end = t_ns
             self._accum_min = counts_arr.copy()
             self._accum_max = counts_arr.copy()
+            self._accum_sample_count = 1
         else:
             self._accum_t_end = t_ns
-            self._accum_min = np.minimum(self._accum_min, counts_arr)
-            self._accum_max = np.maximum(self._accum_max, counts_arr)
+            np.minimum(self._accum_min, counts_arr, out=self._accum_min)
+            np.maximum(self._accum_max, counts_arr, out=self._accum_max)
+            self._accum_sample_count += 1
 
         self._accum_count += 1
 
@@ -170,10 +180,12 @@ class _TierBuffer:
             self._accum_t_end = t_end_ns
             self._accum_min = counts_min.copy()
             self._accum_max = counts_max.copy()
+            self._accum_sample_count = sample_count
         else:
             self._accum_t_end = t_end_ns
-            self._accum_min = np.minimum(self._accum_min, counts_min)
-            self._accum_max = np.maximum(self._accum_max, counts_max)
+            np.minimum(self._accum_min, counts_min, out=self._accum_min)
+            np.maximum(self._accum_max, counts_max, out=self._accum_max)
+            self._accum_sample_count += sample_count
 
         # Count buckets, not samples - each bucket from the previous tier counts as 1
         self._accum_count += 1
@@ -191,14 +203,14 @@ class _TierBuffer:
         self._t_end_ns[idx] = self._accum_t_end
         self._counts_min[idx, :] = self._accum_min
         self._counts_max[idx, :] = self._accum_max
-        self._sample_count[idx] = self._accum_count
+        self._sample_count[idx] = self._accum_sample_count
 
         result = (
             self._accum_t_start,
             self._accum_t_end,
             self._accum_min.copy(),
             self._accum_max.copy(),
-            self._accum_count,
+            self._accum_sample_count,
         )
 
         self._head = (self._head + 1) % self._capacity
@@ -208,6 +220,7 @@ class _TierBuffer:
 
         # Reset accumulator
         self._accum_count = 0
+        self._accum_sample_count = 0
         self._accum_t_start = None
         self._accum_t_end = None
         self._accum_min = None
@@ -294,6 +307,7 @@ class _TierBuffer:
         self._size = 0
         self._total_written = 0
         self._accum_count = 0
+        self._accum_sample_count = 0
         self._accum_t_start = None
         self._accum_t_end = None
         self._accum_min = None
@@ -429,3 +443,177 @@ class VisualizationBuffer:
         with self._lock:
             for tier in self._tiers.values():
                 tier.clear()
+
+
+@dataclass(frozen=True, slots=True)
+class MultiResolutionBufferStats:
+    """Statistics for a multi-resolution buffer including the raw ring."""
+
+    tiers: VisualizationBufferStats
+    raw_memory_bytes: int
+
+    @property
+    def memory_bytes(self) -> int:
+        """Total memory usage in bytes (raw + tiers)."""
+        return self.raw_memory_bytes + self.tiers.memory_bytes
+
+    @property
+    def memory_mb(self) -> float:
+        """Total memory usage in megabytes (raw + tiers)."""
+        return self.memory_bytes / (1024 * 1024)
+
+
+class MultiResolutionBuffer:
+    """Multi-resolution plot buffer: raw ring + tiered min/max downsampling.
+
+    This is the concrete buffer described in Section 16.2:
+    - Raw ring: 60s at 1000Hz (via RingBuffer)
+    - Tier1: 1hr at 10Hz (100ms buckets)
+    - Tier2: 24hr at 0.1Hz (10s buckets)
+    - Tier3: 7d at 0.01Hz (100s buckets)
+    """
+
+    def __init__(
+        self,
+        *,
+        raw_capacity: int = RAW_TIER.capacity,
+        sample_rate_hz: float = RAW_TIER.sample_rate_hz,
+    ) -> None:
+        if raw_capacity <= 0:
+            raise ValueError(f"raw_capacity must be positive, got {raw_capacity}")
+        if sample_rate_hz <= 0:
+            raise ValueError(f"sample_rate_hz must be positive, got {sample_rate_hz}")
+
+        self._sample_rate_hz = sample_rate_hz
+        self._raw = RingBuffer(capacity=raw_capacity)
+        self._tiers = VisualizationBuffer()
+
+    @property
+    def raw(self) -> RingBuffer:
+        """Access the raw ring buffer."""
+        return self._raw
+
+    @property
+    def tiers(self) -> VisualizationBuffer:
+        """Access the downsampled tier buffer."""
+        return self._tiers
+
+    @property
+    def sample_rate_hz(self) -> float:
+        """Raw sampling rate in Hz used for window calculations."""
+        return self._sample_rate_hz
+
+    def append(
+        self,
+        t_monotonic_ns: int,
+        rdt_sequence: int,
+        ft_sequence: int,
+        status: int,
+        counts: tuple[int, int, int, int, int, int],
+    ) -> None:
+        """Append a raw sample and propagate to tiers."""
+        self._raw.append(
+            t_monotonic_ns=t_monotonic_ns,
+            rdt_sequence=rdt_sequence,
+            ft_sequence=ft_sequence,
+            status=status,
+            counts=counts,
+        )
+        self._tiers.add_sample(t_ns=t_monotonic_ns, counts=counts)
+
+    def clear(self) -> None:
+        """Clear raw and tier buffers."""
+        self._raw.clear()
+        self._tiers.clear()
+
+    def select_tier_for_window(self, window_seconds: float) -> str:
+        """Select the best data source for the requested window.
+
+        Returns:
+            "raw" when the raw ring covers the requested window, otherwise a tier name
+            from VisualizationBuffer ("tier1", "tier2", "tier3").
+        """
+        if window_seconds <= 0:
+            raise ValueError(f"window_seconds must be positive, got {window_seconds}")
+
+        raw_duration_seconds = self._raw.capacity / self._sample_rate_hz
+        if window_seconds <= raw_duration_seconds:
+            return "raw"
+        return self._tiers.select_tier_for_window(window_seconds)
+
+    def get_window_data(self, window_seconds: float) -> Optional[dict[str, object]]:
+        """Fetch data appropriate for plotting a given window.
+
+        Returns a dict in one of two shapes:
+
+        Raw:
+            {"kind": "raw", "tier": "raw", ...RingBuffer.get_latest()...}
+
+        Tier (min/max buckets):
+            {
+                "kind": "minmax",
+                "tier": "tier1|tier2|tier3",
+                "t_ref_ns": int,
+                "t_start_ns": int64[],
+                "t_end_ns": int64[],
+                "counts_min": int32[:,6],
+                "counts_max": int32[:,6],
+                "sample_count": uint32[],
+            }
+        """
+        tier = self.select_tier_for_window(window_seconds)
+
+        if tier == "raw":
+            n_samples = int(window_seconds * self._sample_rate_hz)
+            raw = self._raw.get_latest(n_samples)
+            if raw is None:
+                return None
+            return {
+                "kind": "raw",
+                "tier": "raw",
+                **raw,
+            }
+
+        tier_data = self._tiers.get_tier_data(tier)
+        if tier_data is None:
+            # Fallback: if tiers haven't produced buckets yet, show whatever raw we have.
+            raw = self._raw.get_all()
+            if raw is None:
+                return None
+            return {
+                "kind": "raw",
+                "tier": "raw",
+                **raw,
+            }
+
+        t_ref_ns = int(tier_data["t_end_ns"][-1])
+        start_ns = t_ref_ns - int(window_seconds * 1e9)
+
+        # Buckets are chronological; use t_end_ns for a fast start index.
+        start_idx = int(np.searchsorted(tier_data["t_end_ns"], start_ns, side="left"))
+
+        return {
+            "kind": "minmax",
+            "tier": tier,
+            "t_ref_ns": t_ref_ns,
+            "t_start_ns": tier_data["t_start_ns"][start_idx:],
+            "t_end_ns": tier_data["t_end_ns"][start_idx:],
+            "counts_min": tier_data["counts_min"][start_idx:],
+            "counts_max": tier_data["counts_max"][start_idx:],
+            "sample_count": tier_data["sample_count"][start_idx:],
+        }
+
+    def stats(self) -> MultiResolutionBufferStats:
+        """Compute current buffer memory usage."""
+        tiers_stats = self._tiers.stats()
+
+        # RingBuffer storage layout (per sample):
+        # - timestamps: int64 (8)
+        # - rdt_sequence: uint32 (4)
+        # - ft_sequence: uint32 (4)
+        # - status: uint32 (4)
+        # - counts: int32[6] (24)
+        bytes_per_sample = 8 + 4 + 4 + 4 + 24
+        raw_memory = self._raw.capacity * bytes_per_sample
+
+        return MultiResolutionBufferStats(tiers=tiers_stats, raw_memory_bytes=raw_memory)

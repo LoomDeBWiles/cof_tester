@@ -14,6 +14,7 @@ except ImportError:
     pytest.skip("PySide6 not usable", allow_module_level=True)
 
 from gsdv.acquisition.ring_buffer import RingBuffer
+from gsdv.processing import MultiResolutionBuffer
 from gsdv.plot.plot_widget import MultiChannelPlot
 
 
@@ -232,6 +233,35 @@ class TestMultiChannelPlotDataUpdate:
             x_data, y_data = widget._lines[ch].getData()
             assert len(x_data) == 0
             assert len(y_data) == 0
+
+    def test_update_switches_to_minmax_for_long_windows(self, qtbot):
+        """When given a MultiResolutionBuffer, the plot switches tiers by window size."""
+        buffer = MultiResolutionBuffer(raw_capacity=1000, sample_rate_hz=1000.0)
+        for i in range(200):
+            buffer.append(
+                t_monotonic_ns=1_000_000_000_000 + i * 1_000_000,  # 1ms spacing
+                rdt_sequence=i,
+                ft_sequence=i,
+                status=0,
+                counts=(i, i, i, i, i, i),
+            )
+
+        widget = MultiChannelPlot(buffer=buffer, sample_rate=1000.0)
+        qtbot.addWidget(widget)
+
+        # Raw ring covers 1s with capacity=1000; request 5s => tier1 min/max buckets.
+        widget.set_window_seconds(5.0)
+        widget._update_plot()
+        x_fx, y_fx = widget._lines["Fx"].getData()
+        assert len(x_fx) == 4  # 2 buckets => 2 points per bucket
+        assert len(y_fx) == 4
+
+        # Switch back to a window covered by the raw ring.
+        widget.set_window_seconds(0.5)
+        widget._update_plot()
+        x_fx2, y_fx2 = widget._lines["Fx"].getData()
+        assert len(x_fx2) == 200
+        assert len(y_fx2) == 200
 
 
 class TestMultiChannelPlotTimestampConversion:

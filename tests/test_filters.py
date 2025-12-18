@@ -264,30 +264,39 @@ class TestFilterPipeline:
     def test_pipeline_filters_when_enabled(self) -> None:
         """Enabled pipeline applies filtering."""
         pipeline = FilterPipeline(enabled=True, cutoff_hz=10.0, sample_rate_hz=1000.0)
-        sample = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-        output = pipeline.apply(sample)
-        # First sample through filter won't equal input
-        assert not np.allclose(output, sample)
+        steady = np.zeros(6, dtype=np.float64)
+        out0 = pipeline.apply(steady)
+        # First output is bumpless (primed)
+        np.testing.assert_array_equal(out0, steady)
+
+        step = np.ones(6, dtype=np.float64)
+        out1 = pipeline.apply(step)
+        # Step response should be smoothed
+        assert not np.allclose(out1, step)
 
     def test_enable_toggle(self) -> None:
         """Can toggle filtering on and off."""
         pipeline = FilterPipeline(enabled=False, cutoff_hz=10.0, sample_rate_hz=1000.0)
 
-        sample = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        steady = np.zeros(6, dtype=np.float64)
+        step = np.ones(6, dtype=np.float64)
 
         # Disabled: passthrough
-        output_disabled = pipeline.apply(sample.copy())
-        np.testing.assert_array_equal(output_disabled, sample)
+        output_disabled = pipeline.apply(step.copy())
+        np.testing.assert_array_equal(output_disabled, step)
 
         # Enable
         pipeline.enabled = True
-        output_enabled = pipeline.apply(sample.copy())
-        assert not np.allclose(output_enabled, sample)
+        output_prime = pipeline.apply(steady.copy())
+        np.testing.assert_array_equal(output_prime, steady)
+
+        output_enabled = pipeline.apply(step.copy())
+        assert not np.allclose(output_enabled, step)
 
         # Disable again
         pipeline.enabled = False
-        output_disabled_again = pipeline.apply(sample.copy())
-        np.testing.assert_array_equal(output_disabled_again, sample)
+        output_disabled_again = pipeline.apply(step.copy())
+        np.testing.assert_array_equal(output_disabled_again, step)
 
     def test_cutoff_change_recreates_filter(self) -> None:
         """Changing cutoff recreates the filter."""

@@ -4,15 +4,13 @@ Provides a PlotWidget for displaying time-series force/torque data from
 the acquisition engine. Designed for 30fps refresh with autoscale.
 """
 
-from typing import Optional, Tuple, List, Dict
+from typing import Any, Optional, Tuple, Dict
 
 import numpy as np
 import pyqtgraph as pg
 from numpy.typing import NDArray
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QVBoxLayout, QWidget
-
-from gsdv.acquisition.ring_buffer import RingBuffer
 
 
 class MultiChannelPlot(QWidget):
@@ -45,7 +43,7 @@ class MultiChannelPlot(QWidget):
 
     def __init__(
         self,
-        buffer: Optional[RingBuffer] = None,
+        buffer: Optional[object] = None,
         sample_rate: float = 1000.0,
         parent: Optional[QWidget] = None,
     ) -> None:
@@ -112,6 +110,8 @@ class MultiChannelPlot(QWidget):
             # Create curve but don't add to legend automatically yet, 
             # as pyqtgraph adds it if name is provided.
             line = self._plot_item.plot(name=channel, pen=pen)
+            line.setClipToView(True)
+            line.setDownsampling(auto=True, method="peak")
             self._lines[channel] = line
             
         # Show grid
@@ -123,11 +123,11 @@ class MultiChannelPlot(QWidget):
         self._timer.setInterval(int(1000 / self.TARGET_FPS))
         self._timer.timeout.connect(self._update_plot)
 
-    def set_buffer(self, buffer: RingBuffer) -> None:
-        """Set the ring buffer to read data from.
+    def set_buffer(self, buffer: object) -> None:
+        """Set the data buffer to read data from.
 
         Args:
-            buffer: Ring buffer containing sample data.
+            buffer: Either a RingBuffer (raw-only) or MultiResolutionBuffer (tiered).
         """
         self._buffer = buffer
 
@@ -249,13 +249,32 @@ class MultiChannelPlot(QWidget):
         if self._buffer is None:
             return
 
-        # Calculate how many samples to fetch for the window
-        n_samples = int(self._window_seconds * self._sample_rate)
+        data: Any
+        if hasattr(self._buffer, "get_window_data"):
+            data = self._buffer.get_window_data(self._window_seconds)  # type: ignore[attr-defined]
+        else:
+            # Calculate how many samples to fetch for the window
+            n_samples = int(self._window_seconds * self._sample_rate)
+            data = self._buffer.get_latest(n_samples)
 
-        data = self._buffer.get_latest(n_samples)
         if data is None:
             return
 
+        # MultiResolutionBuffer shape
+        if isinstance(data, dict) and "kind" in data:
+            kind = data["kind"]
+            if kind == "raw":
+                self._update_raw_plot(data)
+                return
+            if kind == "minmax":
+                self._update_minmax_plot(data)
+                return
+            raise ValueError(f"Unknown plot data kind: {kind!r}")
+
+        # RingBuffer shape
+        self._update_raw_plot(data)
+
+    def _update_raw_plot(self, data: dict[str, Any]) -> None:
         timestamps = data["timestamps"]
         counts = data["counts"]
 
@@ -278,7 +297,37 @@ class MultiChannelPlot(QWidget):
                 cpf = self._counts_per_torque
 
             y_values = counts[:, i].astype(np.float64) / cpf
-            line.setData(t_seconds, y_values)
+            line.setData(t_seconds, y_values, connect="all")
+
+    def _update_minmax_plot(self, data: dict[str, Any]) -> None:
+        t_ref_ns = int(data["t_ref_ns"])
+        t_start_ns: NDArray[np.int64] = data["t_start_ns"]
+        t_end_ns: NDArray[np.int64] = data["t_end_ns"]
+        counts_min: NDArray[np.int32] = data["counts_min"]
+        counts_max: NDArray[np.int32] = data["counts_max"]
+
+        if len(t_start_ns) == 0:
+            return
+
+        # Plot min/max as vertical segments per bucket (connect="pairs").
+        t_mid_ns = (t_start_ns.astype(np.int64) + t_end_ns.astype(np.int64)) // 2
+        t_mid_seconds = (t_mid_ns - t_ref_ns).astype(np.float64) / 1e9
+        x_pairs = np.repeat(t_mid_seconds, 2)
+
+        for i, channel in enumerate(self.CHANNEL_NAMES):
+            line = self._lines[channel]
+            if not line.isVisible():
+                continue
+
+            if channel in ("Fx", "Fy", "Fz"):
+                cpf = self._counts_per_force
+            else:
+                cpf = self._counts_per_torque
+
+            y_min = counts_min[:, i].astype(np.float64) / cpf
+            y_max = counts_max[:, i].astype(np.float64) / cpf
+            y_pairs = np.column_stack([y_min, y_max]).reshape(-1)
+            line.setData(x_pairs, y_pairs, connect="pairs")
 
     def _timestamps_to_relative_seconds(
         self, timestamps: NDArray[np.int64]

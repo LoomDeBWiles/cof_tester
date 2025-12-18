@@ -413,3 +413,38 @@ class TestProcessingEngineThreadSafety:
         # Should complete without errors
         stats = engine.statistics()
         assert stats["samples_processed"] == 100
+
+
+class TestProcessingEngineFiltering:
+    """Tests for optional low-pass filtering (BL-4)."""
+
+    def test_filter_toggle_is_bumpless(self) -> None:
+        """Enabling the filter does not introduce a startup transient."""
+        engine = ProcessingEngine(make_calibration(cpf=1.0, cpt=1.0))
+        engine.set_filter_cutoff_hz(10.0)
+
+        sample = make_sample(counts=(100, 0, 0, 0, 0, 0))
+        unfiltered = engine.process_sample(sample)
+        assert unfiltered.force_N == pytest.approx((100.0, 0.0, 0.0))
+
+        engine.set_filter_enabled(True)
+        first_filtered = engine.process_sample(sample)
+        assert first_filtered.force_N == pytest.approx(unfiltered.force_N)
+
+    def test_filter_smooths_step_changes(self) -> None:
+        """A step change is smoothed when filtering is enabled."""
+        engine = ProcessingEngine(
+            make_calibration(cpf=1.0, cpt=1.0),
+            filter_enabled=True,
+            filter_cutoff_hz=10.0,
+            sample_rate_hz=1000.0,
+        )
+
+        baseline = make_sample(counts=(0, 0, 0, 0, 0, 0))
+        out0 = engine.process_sample(baseline)
+        assert out0.force_N == pytest.approx((0.0, 0.0, 0.0))
+
+        step = make_sample(counts=(100, 0, 0, 0, 0, 0), rdt_sequence=2)
+        out1 = engine.process_sample(step)
+        assert out1.force_N is not None
+        assert 0.0 < out1.force_N[0] < 100.0
