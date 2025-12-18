@@ -15,6 +15,11 @@ Example:
     >>> cal = cal_client.get_calibration()
     >>> rdt_client = RdtClient("192.168.1.1")
     >>> rdt_client.start_streaming()
+
+    >>> from gsdv.protocols import discover_sensors
+    >>> sensors = discover_sensors()
+    >>> for s in sensors:
+    ...     print(f"Found sensor at {s.ip}: {s.serial_number}")
 """
 
 from gsdv.models import CalibrationInfo, SampleRecord
@@ -23,6 +28,12 @@ from gsdv.protocols.bias import (
     SoftZeroOffset,
     capture_soft_zero,
     send_device_bias,
+)
+from gsdv.protocols.discovery import (
+    DiscoveredSensor,
+    discover_sensors,
+    get_local_subnets,
+    scan_subnet,
 )
 from gsdv.protocols.http_calibration import (
     HTTP_PORT,
@@ -69,6 +80,11 @@ __all__ = [
     "SoftZeroOffset",
     "capture_soft_zero",
     "send_device_bias",
+    # Discovery
+    "DiscoveredSensor",
+    "discover_sensors",
+    "get_local_subnets",
+    "scan_subnet",
     # UDP RDT
     "RDT_HEADER",
     "RDT_PORT",
