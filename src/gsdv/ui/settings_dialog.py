@@ -172,7 +172,20 @@ class DisplayTab(QWidget):
 
         self._y_autoscale = QCheckBox("Auto-scale Y axis")
         self._y_autoscale.setChecked(True)
+        self._y_autoscale.stateChanged.connect(self._on_autoscale_changed)
         viz_layout.addRow(self._y_autoscale)
+
+        self._y_manual_min = QDoubleSpinBox()
+        self._y_manual_min.setRange(-1000000.0, 1000000.0)
+        self._y_manual_min.setDecimals(2)
+        self._y_manual_min.setValue(0.0)
+        viz_layout.addRow("Y-axis Min:", self._y_manual_min)
+
+        self._y_manual_max = QDoubleSpinBox()
+        self._y_manual_max.setRange(-1000000.0, 1000000.0)
+        self._y_manual_max.setDecimals(2)
+        self._y_manual_max.setValue(100.0)
+        viz_layout.addRow("Y-axis Max:", self._y_manual_max)
 
         self._show_grid = QCheckBox("Show grid")
         self._show_grid.setChecked(True)
@@ -223,6 +236,12 @@ class DisplayTab(QWidget):
 
         layout.addWidget(filter_group)
         layout.addStretch()
+
+    def _on_autoscale_changed(self) -> None:
+        """Update visibility of manual Y-axis range controls based on autoscale state."""
+        autoscale_enabled = self._y_autoscale.isChecked()
+        self._y_manual_min.setEnabled(not autoscale_enabled)
+        self._y_manual_max.setEnabled(not autoscale_enabled)
 
     def load_preferences(self, prefs: UserPreferences) -> None:
         """Load values from preferences."""

@@ -334,3 +334,63 @@ class TestMultiChannelPlotGridAndCrosshair:
         assert not widget._vline.isVisible()
         assert not widget._hline.isVisible()
         assert not widget._coord_label.isVisible()
+
+
+class TestMultiChannelPlotYAxisScaling:
+    """Tests for Y-axis scaling functionality."""
+
+    def test_y_autoscale_enabled_by_default(self, qtbot):
+        """Y-axis autoscale is enabled by default."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        assert widget.is_y_autoscale_enabled()
+
+    def test_set_y_range_disables_autoscale(self, qtbot):
+        """set_y_range disables autoscale."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        widget.set_y_range(-10.0, 10.0)
+        assert not widget.is_y_autoscale_enabled()
+
+    def test_enable_y_autoscale_re_enables_autoscale(self, qtbot):
+        """enable_y_autoscale re-enables autoscale after manual range."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        widget.set_y_range(-10.0, 10.0)
+        widget.enable_y_autoscale()
+        assert widget.is_y_autoscale_enabled()
+
+    def test_set_y_range_y_min_equals_y_max_raises(self, qtbot):
+        """set_y_range raises ValueError when y_min equals y_max."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        with pytest.raises(ValueError, match="y_min must be less than y_max"):
+            widget.set_y_range(5.0, 5.0)
+
+    def test_set_y_range_y_min_greater_than_y_max_raises(self, qtbot):
+        """set_y_range raises ValueError when y_min is greater than y_max."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        with pytest.raises(ValueError, match="y_min must be less than y_max"):
+            widget.set_y_range(10.0, 5.0)
+
+    def test_get_y_range_returns_none_when_autoscaling(self, qtbot):
+        """get_y_range returns None when autoscale is enabled."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        assert widget.get_y_range() is None
+
+    def test_get_y_range_returns_tuple_when_manual_range_set(self, qtbot):
+        """get_y_range returns (min, max) tuple when manual range is set."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        widget.set_y_range(-15.0, 25.0)
+        assert widget.get_y_range() == (-15.0, 25.0)
+
+    def test_enable_y_autoscale_clears_manual_range(self, qtbot):
+        """enable_y_autoscale clears manual range and returns None from get_y_range."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        widget.set_y_range(-10.0, 10.0)
+        widget.enable_y_autoscale()
+        assert widget.get_y_range() is None
