@@ -81,6 +81,30 @@ def _http_get(ip: str, port: int, path: str, timeout: float) -> str:
     return body
 
 
+def _find_xml_element(
+    root: ElementTree.Element, paths: list[str]
+) -> Optional[ElementTree.Element]:
+    """Find first matching XML element by XPath from a list of paths.
+
+    This function exists because Element.__bool__() is deprecated in Python 3.14+
+    and returns False for elements with no children. Using `or` chaining like
+    `root.find(a) or root.find(b)` fails when the first find returns a valid
+    childless element.
+
+    Args:
+        root: The root element to search from.
+        paths: List of XPath expressions to try in order.
+
+    Returns:
+        The first matching Element, or None if no paths match.
+    """
+    for path in paths:
+        elem = root.find(path)
+        if elem is not None:
+            return elem
+    return None
+
+
 def parse_calibration_xml(xml_content: str) -> CalibrationInfo:
     """Parse calibration XML response.
 
@@ -99,8 +123,8 @@ def parse_calibration_xml(xml_content: str) -> CalibrationInfo:
         raise HttpCalibrationError(f"Invalid XML: {e}") from e
 
     # Find calibration fields - try common element names
-    cpf_element = root.find(".//cfgcpf") or root.find(".//countsPerForce") or root.find(".//cpf")
-    cpt_element = root.find(".//cfgcpt") or root.find(".//countsPerTorque") or root.find(".//cpt")
+    cpf_element = _find_xml_element(root, [".//cfgcpf", ".//countsPerForce", ".//cpf"])
+    cpt_element = _find_xml_element(root, [".//cfgcpt", ".//countsPerTorque", ".//cpt"])
 
     if cpf_element is None or cpf_element.text is None:
         raise HttpCalibrationError("Missing counts_per_force in calibration XML")
@@ -114,10 +138,10 @@ def parse_calibration_xml(xml_content: str) -> CalibrationInfo:
         raise HttpCalibrationError(f"Invalid calibration values: {e}") from e
 
     # Optional fields
-    serial_element = root.find(".//setserial") or root.find(".//serial")
-    firmware_element = root.find(".//setfwver") or root.find(".//firmware")
-    force_units_element = root.find(".//cfgfu") or root.find(".//forceUnits")
-    torque_units_element = root.find(".//cfgtu") or root.find(".//torqueUnits")
+    serial_element = _find_xml_element(root, [".//setserial", ".//serial"])
+    firmware_element = _find_xml_element(root, [".//setfwver", ".//firmware"])
+    force_units_element = _find_xml_element(root, [".//cfgfu", ".//forceUnits"])
+    torque_units_element = _find_xml_element(root, [".//cfgtu", ".//torqueUnits"])
 
     serial_number = serial_element.text if serial_element is not None and serial_element.text else None
     firmware_version = firmware_element.text if firmware_element is not None and firmware_element.text else None

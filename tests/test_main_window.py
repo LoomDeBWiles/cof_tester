@@ -162,9 +162,9 @@ class TestKeyboardShortcuts:
 class TestMainWindowTheme:
     """Tests for FR-28: Dark/light theme toggle with persistence."""
 
-    def test_default_theme_is_light(self, main_window):
-        """MainWindow starts with light theme by default."""
-        assert main_window.current_theme() == MainWindow.LIGHT_THEME
+    def test_default_theme_is_dark(self, main_window):
+        """MainWindow starts with dark theme by default (from preferences)."""
+        assert main_window.current_theme() == MainWindow.DARK_THEME
 
     def test_set_theme_dark(self, main_window):
         """Setting dark theme changes current_theme."""
@@ -180,34 +180,34 @@ class TestMainWindowTheme:
     def test_set_theme_invalid_ignored(self, main_window):
         """Invalid theme values are ignored."""
         main_window.set_theme("invalid_theme")
+        assert main_window.current_theme() == MainWindow.DARK_THEME
+
+    def test_toggle_theme_from_dark_to_light(self, main_window):
+        """Toggling from dark theme (default) switches to light."""
+        main_window.toggle_theme()
         assert main_window.current_theme() == MainWindow.LIGHT_THEME
 
     def test_toggle_theme_from_light_to_dark(self, main_window):
         """Toggling from light theme switches to dark."""
+        main_window.set_theme(MainWindow.LIGHT_THEME)
         main_window.toggle_theme()
         assert main_window.current_theme() == MainWindow.DARK_THEME
-
-    def test_toggle_theme_from_dark_to_light(self, main_window):
-        """Toggling from dark theme switches to light."""
-        main_window.set_theme(MainWindow.DARK_THEME)
-        main_window.toggle_theme()
-        assert main_window.current_theme() == MainWindow.LIGHT_THEME
 
     def test_theme_changed_signal_emitted_on_set(self, main_window):
         """theme_changed signal emits when theme is set to different value."""
         received_themes: list[str] = []
         main_window.theme_changed.connect(lambda theme: received_themes.append(theme))
 
-        main_window.set_theme(MainWindow.DARK_THEME)
+        main_window.set_theme(MainWindow.LIGHT_THEME)
 
-        assert received_themes == [MainWindow.DARK_THEME]
+        assert received_themes == [MainWindow.LIGHT_THEME]
 
     def test_theme_changed_signal_not_emitted_when_same(self, main_window):
         """theme_changed signal does not emit when setting same theme."""
         received_themes: list[str] = []
         main_window.theme_changed.connect(lambda theme: received_themes.append(theme))
 
-        main_window.set_theme(MainWindow.LIGHT_THEME)  # Same as default
+        main_window.set_theme(MainWindow.DARK_THEME)  # Same as default
 
         assert received_themes == []
 
@@ -219,16 +219,16 @@ class TestMainWindowTheme:
         main_window.toggle_theme()
         main_window.toggle_theme()
 
-        assert received_themes == [MainWindow.DARK_THEME, MainWindow.LIGHT_THEME]
+        assert received_themes == [MainWindow.LIGHT_THEME, MainWindow.DARK_THEME]
 
     def test_theme_button_text_updates_on_toggle(self, main_window):
         """Theme button text shows opposite theme name."""
-        # Light theme shows "Dark" button (to switch to dark)
-        assert main_window._theme_button.text() == "Dark"
+        # Dark theme (default) shows "Light" button (to switch to light)
+        assert main_window._theme_button.text() == "Light"
 
         main_window.toggle_theme()
-        # Dark theme shows "Light" button (to switch to light)
-        assert main_window._theme_button.text() == "Light"
+        # Light theme shows "Dark" button (to switch to dark)
+        assert main_window._theme_button.text() == "Dark"
 
     def test_theme_constants_have_expected_values(self, main_window):
         """Theme constants match expected string values."""
