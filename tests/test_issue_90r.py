@@ -70,11 +70,10 @@ def test_cmd_log_sanitizes_prefix(tmp_path, mock_dependencies):
     # Let's check what sanitize_prefix("../traversal/") returns.
     # It should probably be "traversal_" + timestamp.
     
-    print(f"Created file: {created_file.name}")
-    
     assert "traversal" in created_file.name
     assert ".." not in created_file.name
     assert "/" not in created_file.name
+    assert created_file.parent == output_dir
     
     # Ensure no file was created outside output_dir (not easy to check globally, 
     # but we can check the intended parent if we want, though verify file in dir is enough)
@@ -106,8 +105,6 @@ def test_cmd_log_absolute_path_prefix(tmp_path, mock_dependencies):
     files = list(output_dir.iterdir())
     assert len(files) == 1
     created_file = files[0]
-    
-    print(f"Created file: {created_file.name}")
-    
+
     assert "etcpasswd" in created_file.name
     assert created_file.parent == output_dir

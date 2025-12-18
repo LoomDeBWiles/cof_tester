@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ID="${1:-}"
+if [[ -z "$ID" ]]; then
+  echo "Usage: bdc <bead-id>" >&2
+  exit 1
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" ]]; then
+  echo "Error: bdc must be run inside a git repository" >&2
+  exit 1
+fi
+cd "$REPO_ROOT"
+
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$REPO_ROOT/.uv-cache}"
+
+# If the caller already staged changes, don't auto-stage everything.
+# This helps avoid accidentally committing unrelated local work.
+HAS_STAGED_CHANGES="false"
+if ! git diff --cached --quiet; then
+  HAS_STAGED_CHANGES="true"
+fi
+
+echo "Running tests..."
+if ! uv run pytest tests/ -v; then
+  echo "Tests failed. Bead $ID not closed." >&2
+  exit 1
+fi
+
+echo "Tests passed. Closing bead..."
+bd close "$ID"
+
+echo "Committing..."
+MSG="$(
+  bd show "$ID" --json | python3 -c 'import json, sys
+data = json.load(sys.stdin)
+item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+issue_type = str(item.get("issue_type") or "task").strip()
+bead_id = str(item.get("id") or "").strip()
+title = str(item.get("title") or bead_id).strip().replace("\n", " ")
+if not bead_id:
+    raise SystemExit("bd show output missing id")
+print(f"{issue_type}({bead_id}): {title}")'
+)"
+
+# Always stage bead state.
+git add .beads/issues.jsonl .beads/metadata.json .beads/deletions.jsonl 2>/dev/null || true
+
+if [[ "$HAS_STAGED_CHANGES" == "false" ]]; then
+  git add -A
+fi
+
+if git diff --cached --quiet; then
+  echo "No changes to commit."
+else
+  git commit -m "$MSG"
+fi
+
+echo "Pushing..."
+if ! git push; then
+  echo "Warning: git push failed; commit may be local-only." >&2
+  echo "You can retry later with: git push" >&2
+fi
+
+echo "Done: $MSG"

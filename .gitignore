@@ -47,6 +47,10 @@ dmypy.json
 # Logs (keep structure, ignore content)
 logs/
 
+# Agent scratch
+*_report.txt
+test_namespace.py
+
 # OS
 .DS_Store
 Thumbs.db
