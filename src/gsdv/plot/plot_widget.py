@@ -9,8 +9,8 @@ from typing import Any, Optional, Tuple, Dict
 import numpy as np
 import pyqtgraph as pg
 from numpy.typing import NDArray
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtCore import QTimer, QPointF
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QLabel
 
 
 class MultiChannelPlot(QWidget):
@@ -74,6 +74,10 @@ class MultiChannelPlot(QWidget):
 
         # Curves
         self._lines: Dict[str, pg.PlotDataItem] = {}
+
+        # Grid and crosshair state
+        self._grid_enabled = True
+        self._crosshair_enabled = False
 
         self._setup_ui()
         self._setup_timer()

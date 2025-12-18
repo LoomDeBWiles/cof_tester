@@ -29,9 +29,9 @@ def test_time_window_selector_snapping(qapp):
     assert selector.window_seconds() == 10.0
     assert selector.window_seconds() != custom_value
 
-def test_mainwindow_preference_mismatch(qapp):
-    """Test the mismatch between UI display and actual plot value."""
-    # Mock preferences object
+def test_mainwindow_preference_sync(qapp):
+    """Test that custom time window values are snapped and synced correctly."""
+    # Mock preferences object with a custom time window value
     class MockPrefs:
         def __init__(self):
             self.time_window_seconds = 13.0
@@ -49,15 +49,17 @@ def test_mainwindow_preference_mismatch(qapp):
 
     prefs = MockPrefs()
     window = MainWindow(preferences=prefs)
-    
-    # The selector should show the snapped value (10s)
+
+    # The selector should show the snapped value (10s, closest to 13s)
     selector_value = window._time_window_selector.window_seconds()
     assert selector_value == 10.0
-    
-    # The plot should use the raw preference value (13s)
-    # Accessing private attribute _window_seconds for verification
+
+    # The preference should be updated to the snapped value
+    assert prefs.time_window_seconds == 10.0
+
+    # The plot should use the snapped value
     plot_value = window._plot_area._window_seconds
-    assert plot_value == 13.0
-    
-    # This confirms the bug: selector says 10s, plot uses 13s
-    assert selector_value != plot_value
+    assert plot_value == 10.0
+
+    # All values should be consistent
+    assert selector_value == plot_value == prefs.time_window_seconds
