@@ -54,6 +54,10 @@ class TestSanitizePrefix:
     def test_strips_whitespace(self) -> None:
         assert sanitize_prefix("  padded  ") == "padded"
 
+    def test_removes_spaces_in_middle(self) -> None:
+        assert sanitize_prefix("a b") == "ab"
+        assert sanitize_prefix("my data file") == "mydatafile"
+
 
 class TestIsValidPrefix:
     """Tests for prefix validation."""
