@@ -164,6 +164,27 @@ class TestSingleChannelPlotConfiguration:
         with pytest.raises(ValueError, match="must be positive"):
             widget.set_counts_per_unit(-100.0)
 
+    def test_set_sample_rate_valid(self, qtbot):
+        """set_sample_rate accepts positive values."""
+        widget = SingleChannelPlot()
+        qtbot.addWidget(widget)
+        widget.set_sample_rate(2000.0)
+        assert widget._sample_rate == 2000.0
+
+    def test_set_sample_rate_zero_raises(self, qtbot):
+        """set_sample_rate raises for zero."""
+        widget = SingleChannelPlot()
+        qtbot.addWidget(widget)
+        with pytest.raises(ValueError, match="must be positive"):
+            widget.set_sample_rate(0.0)
+
+    def test_set_sample_rate_negative_raises(self, qtbot):
+        """set_sample_rate raises for negative values."""
+        widget = SingleChannelPlot()
+        qtbot.addWidget(widget)
+        with pytest.raises(ValueError, match="must be positive"):
+            widget.set_sample_rate(-1.0)
+
     def test_set_window_seconds_valid(self, qtbot):
         """set_window_seconds accepts positive values."""
         widget = SingleChannelPlot()
