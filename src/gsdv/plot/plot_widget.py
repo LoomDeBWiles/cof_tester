@@ -117,9 +117,28 @@ class MultiChannelPlot(QWidget):
             line.setClipToView(True)
             line.setDownsampling(auto=True, method="peak")
             self._lines[channel] = line
-            
-        # Show grid
+
+        # Show grid by default
         self._plot_item.showGrid(x=True, y=True, alpha=0.3)
+
+        # Set up crosshair lines (hidden by default)
+        self._vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('y', width=1))
+        self._hline = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen('y', width=1))
+        self._plot_item.addItem(self._vline, ignoreBounds=True)
+        self._plot_item.addItem(self._hline, ignoreBounds=True)
+        self._vline.setVisible(False)
+        self._hline.setVisible(False)
+
+        # Coordinate label for crosshair
+        self._coord_label = QLabel(self)
+        self._coord_label.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 180); color: yellow; "
+            "padding: 4px; border-radius: 3px; font-size: 11px;"
+        )
+        self._coord_label.setVisible(False)
+
+        # Connect mouse move signal
+        self._plot_item.scene().sigMouseMoved.connect(self._on_mouse_moved)
 
     def _setup_timer(self) -> None:
         """Set up the update timer for 30fps refresh."""
@@ -229,6 +248,78 @@ class MultiChannelPlot(QWidget):
         if self._y_autoscale:
             return None
         return (self._y_range_min, self._y_range_max)
+
+    def set_grid_enabled(self, enabled: bool) -> None:
+        """Enable or disable the plot grid.
+
+        Args:
+            enabled: True to show grid, False to hide it.
+        """
+        self._grid_enabled = enabled
+        self._plot_item.showGrid(x=enabled, y=enabled, alpha=0.3)
+
+    def is_grid_enabled(self) -> bool:
+        """Return whether the grid is currently enabled."""
+        return self._grid_enabled
+
+    def set_crosshair_enabled(self, enabled: bool) -> None:
+        """Enable or disable the crosshair cursor.
+
+        Args:
+            enabled: True to show crosshair, False to hide it.
+        """
+        self._crosshair_enabled = enabled
+        if not enabled:
+            self._vline.setVisible(False)
+            self._hline.setVisible(False)
+            self._coord_label.setVisible(False)
+
+    def is_crosshair_enabled(self) -> bool:
+        """Return whether the crosshair is currently enabled."""
+        return self._crosshair_enabled
+
+    def _on_mouse_moved(self, pos: QPointF) -> None:
+        """Handle mouse movement to update crosshair position.
+
+        Args:
+            pos: Mouse position in scene coordinates.
+        """
+        if not self._crosshair_enabled:
+            return
+
+        if self._plot_item.sceneBoundingRect().contains(pos):
+            vb = self._plot_item.vb
+            mouse_point = vb.mapSceneToView(pos)
+            x = mouse_point.x()
+            y = mouse_point.y()
+
+            # Update crosshair lines
+            self._vline.setPos(x)
+            self._hline.setPos(y)
+            self._vline.setVisible(True)
+            self._hline.setVisible(True)
+
+            # Update coordinate label
+            self._coord_label.setText(f"t={x:.3f}s, y={y:.3f}")
+            self._coord_label.adjustSize()
+
+            # Position label near cursor but avoid edges
+            widget_pos = self._plot_widget.mapFromScene(pos)
+            label_x = int(widget_pos.x() + 10)
+            label_y = int(widget_pos.y() + 10)
+
+            # Keep label within widget bounds
+            max_x = self.width() - self._coord_label.width() - 5
+            max_y = self.height() - self._coord_label.height() - 5
+            label_x = min(label_x, max_x)
+            label_y = min(label_y, max_y)
+
+            self._coord_label.move(label_x, label_y)
+            self._coord_label.setVisible(True)
+        else:
+            self._vline.setVisible(False)
+            self._hline.setVisible(False)
+            self._coord_label.setVisible(False)
 
     def start(self) -> None:
         """Start the plot update timer."""
