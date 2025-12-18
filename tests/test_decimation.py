@@ -6,11 +6,10 @@ import numpy as np
 import pytest
 
 from gsdv.processing import (
+    RAW_TIER,
     TIER1,
     TIER2,
     TIER3,
-    RAW_TIER,
-    TierConfig,
     TierStats,
     VisualizationBuffer,
     VisualizationBufferStats,
@@ -127,7 +126,10 @@ class TestVisualizationBufferAddSample:
         buffer = VisualizationBuffer()
         # 10000 samples = 100 tier1 buckets = 1 tier2 bucket
         for i in range(10_000):
-            buffer.add_sample(t_ns=i * 1_000_000, counts=(i % 100, i % 100, i % 100, i % 100, i % 100, i % 100))
+            buffer.add_sample(
+                t_ns=i * 1_000_000,
+                counts=(i % 100, i % 100, i % 100, i % 100, i % 100, i % 100),
+            )
         stats = buffer.stats()
         assert stats.tier_stats[0].size == 100  # tier1
         assert stats.tier_stats[1].size == 1    # tier2

@@ -138,8 +138,12 @@ class TestTorqueConversion:
         """torque_from_newton_meters converts from canonical N·m."""
         assert torque_from_newton_meters(1.0, TorqueUnit.Nm) == 1.0
         assert torque_from_newton_meters(1.0, TorqueUnit.Nmm) == pytest.approx(1000.0)
-        assert torque_from_newton_meters(1.3558179483314004, TorqueUnit.lbf_ft) == pytest.approx(1.0)
-        assert torque_from_newton_meters(0.1129848290276167, TorqueUnit.lbf_in) == pytest.approx(1.0)
+        assert torque_from_newton_meters(
+            1.3558179483314004, TorqueUnit.lbf_ft
+        ) == pytest.approx(1.0)
+        assert torque_from_newton_meters(
+            0.1129848290276167, TorqueUnit.lbf_in
+        ) == pytest.approx(1.0)
 
     def test_roundtrip_conversion(self) -> None:
         """Converting N·m -> other -> N·m should return original value."""
