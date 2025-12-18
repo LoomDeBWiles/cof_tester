@@ -6,6 +6,7 @@ ATI NETrs force/torque sensors:
 - UDP RDT (Real-time Data Transfer) streaming protocol
 - TCP command interface for calibration and configuration
 - HTTP calibration retrieval
+- Subnet discovery for automatic sensor detection
 
 Example:
     >>> from gsdv.protocols import RdtClient, HttpCalibrationClient
@@ -13,9 +14,20 @@ Example:
     >>> cal = cal_client.get_calibration()
     >>> rdt_client = RdtClient("192.168.1.1")
     >>> rdt_client.start_streaming()
+
+    >>> from gsdv.protocols import discover_sensors
+    >>> sensors = discover_sensors()
+    >>> for s in sensors:
+    ...     print(f"Found sensor at {s.ip}: {s.serial_number}")
 """
 
 from gsdv.models import CalibrationInfo, SampleRecord
+from gsdv.protocols.discovery import (
+    DiscoveredSensor,
+    discover_sensors,
+    get_local_subnets,
+    scan_subnet,
+)
 from gsdv.protocols.http_calibration import (
     HTTP_PORT,
     HTTP_TIMEOUT,
@@ -56,6 +68,11 @@ __all__ = [
     # Models
     "CalibrationInfo",
     "SampleRecord",
+    # Discovery
+    "DiscoveredSensor",
+    "discover_sensors",
+    "get_local_subnets",
+    "scan_subnet",
     # UDP RDT
     "RDT_HEADER",
     "RDT_PORT",

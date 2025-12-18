@@ -31,6 +31,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
     """Discover sensors on the local network."""
     subnet = args.subnet
     timeout = args.timeout
+    http_port = args.http_port
 
     print(f"Scanning {subnet} for ATI NETrs sensors...")
     print()
@@ -45,7 +46,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
     for ip in network.hosts():
         ip_str = str(ip)
         try:
-            client = HttpCalibrationClient(ip_str, timeout=timeout)
+            client = HttpCalibrationClient(ip_str, port=http_port, timeout=timeout)
             cal = client.get_calibration()
             found.append((ip_str, cal))
             print(f"  Found: {ip_str}")
@@ -291,6 +292,12 @@ def main() -> int:
         type=float,
         default=0.5,
         help="Timeout per host in seconds",
+    )
+    discover_parser.add_argument(
+        "--http-port",
+        type=int,
+        default=80,
+        help="HTTP calibration port",
     )
     discover_parser.set_defaults(func=cmd_discover)
 
