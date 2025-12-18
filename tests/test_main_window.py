@@ -282,3 +282,87 @@ class TestMainWindowTransform:
         received = []
         main_window.transform_requested.connect(lambda t: received.append(t))
         # No assertion needed - test passes if connection doesn't raise
+
+
+class TestStatusBar:
+    """Tests for Section 8.2: Status bar with diagnostics."""
+
+    def test_sample_rate_display_initial_state(self, main_window):
+        """Sample rate label shows placeholder initially."""
+        assert "---" in main_window._sample_rate_label.text()
+
+    def test_update_sample_rate(self, main_window):
+        """update_sample_rate updates the displayed rate."""
+        main_window.update_sample_rate(1000.0)
+        assert "1000.0 Hz" in main_window._sample_rate_label.text()
+
+    def test_buffer_status_display_initial_state(self, main_window):
+        """Buffer status label shows placeholder initially."""
+        assert "---" in main_window._buffer_status_label.text()
+
+    def test_update_buffer_status(self, main_window):
+        """update_buffer_status updates the displayed fill percentage."""
+        main_window.update_buffer_status(75.5)
+        assert "75%" in main_window._buffer_status_label.text()
+
+    def test_packet_loss_display_initial_state(self, main_window):
+        """Packet loss label shows zero initially."""
+        assert "0" in main_window._packet_loss_label.text()
+
+    def test_update_packet_loss_zero(self, main_window):
+        """update_packet_loss shows zero without styling."""
+        main_window.update_packet_loss(0)
+        assert "0" in main_window._packet_loss_label.text()
+        assert "color" not in main_window._packet_loss_label.styleSheet().lower() or \
+               main_window._packet_loss_label.styleSheet() == ""
+
+    def test_update_packet_loss_nonzero_shows_red(self, main_window):
+        """update_packet_loss with nonzero shows red styling."""
+        main_window.update_packet_loss(5)
+        assert "5" in main_window._packet_loss_label.text()
+        assert "F44336" in main_window._packet_loss_label.styleSheet()
+
+    def test_dropped_count_display_initial_state(self, main_window):
+        """Dropped counter label shows zero initially."""
+        assert "0" in main_window._dropped_label.text()
+
+    def test_update_dropped_count_zero(self, main_window):
+        """update_dropped_count shows zero without styling."""
+        main_window.update_dropped_count(0)
+        assert "Dropped: 0" in main_window._dropped_label.text()
+        assert "color" not in main_window._dropped_label.styleSheet().lower() or \
+               main_window._dropped_label.styleSheet() == ""
+
+    def test_update_dropped_count_nonzero_shows_warning_color(self, main_window):
+        """update_dropped_count with nonzero shows warning styling."""
+        main_window.update_dropped_count(10)
+        assert "Dropped: 10" in main_window._dropped_label.text()
+        assert "FF9800" in main_window._dropped_label.styleSheet()
+
+    def test_warning_label_empty_initially(self, main_window):
+        """Warning label is empty initially."""
+        assert main_window._warning_label.text() == ""
+
+    def test_show_warning(self, main_window):
+        """show_warning displays the warning message."""
+        main_window.show_warning("High packet loss detected")
+        assert main_window._warning_label.text() == "High packet loss detected"
+
+    def test_clear_warning(self, main_window):
+        """clear_warning removes the warning message."""
+        main_window.show_warning("Some warning")
+        main_window.clear_warning()
+        assert main_window._warning_label.text() == ""
+
+    def test_show_status_message(self, main_window):
+        """show_status_message shows a temporary message."""
+        main_window.show_status_message("Test message", timeout_ms=1000)
+        assert main_window._status_bar.currentMessage() == "Test message"
+
+    def test_status_bar_has_all_required_elements(self, main_window):
+        """Status bar contains all required diagnostic elements."""
+        assert hasattr(main_window, "_sample_rate_label")
+        assert hasattr(main_window, "_buffer_status_label")
+        assert hasattr(main_window, "_packet_loss_label")
+        assert hasattr(main_window, "_dropped_label")
+        assert hasattr(main_window, "_warning_label")

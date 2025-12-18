@@ -570,7 +570,12 @@ class MainWindow(QMainWindow):
         self._packet_loss_label = QLabel("Packet Loss: 0")
         self._status_bar.addWidget(self._packet_loss_label)
 
-        self._status_bar.addPermanentWidget(QLabel(""))  # Spacer
+        self._dropped_label = QLabel("Dropped: 0")
+        self._status_bar.addWidget(self._dropped_label)
+
+        self._warning_label = QLabel("")
+        self._warning_label.setStyleSheet("color: #FF9800; font-weight: bold;")
+        self._status_bar.addPermanentWidget(self._warning_label)
 
     def _setup_shortcuts(self) -> None:
         # Connect: Ctrl+Enter
@@ -882,6 +887,30 @@ class MainWindow(QMainWindow):
     def show_status_message(self, message: str, timeout_ms: int = 3000) -> None:
         """Show a temporary message in the status bar."""
         self._status_bar.showMessage(message, timeout_ms)
+
+    def update_dropped_count(self, count: int) -> None:
+        """Update the dropped samples counter in the status bar.
+
+        Dropped samples occur when the app's internal queue fills up faster
+        than the processing thread can consume. This indicates the processing
+        pipeline is falling behind.
+        """
+        self._dropped_label.setText(f"Dropped: {count}")
+        if count > 0:
+            self._dropped_label.setStyleSheet("color: #FF9800;")
+        else:
+            self._dropped_label.setStyleSheet("")
+
+    def show_warning(self, message: str) -> None:
+        """Display a warning message in the status bar.
+
+        Warnings persist until cleared. Use clear_warning() to remove.
+        """
+        self._warning_label.setText(message)
+
+    def clear_warning(self) -> None:
+        """Clear the warning message from the status bar."""
+        self._warning_label.setText("")
 
     @property
     def force_unit(self) -> str:
