@@ -111,6 +111,11 @@ def parse_calinfo_response(data: bytes) -> CalibrationInfo:
     )
 
 
+# int16 range limits for transform values (value * 100 must fit in int16)
+TRANSFORM_VALUE_MIN = -327.67
+TRANSFORM_VALUE_MAX = 327.67
+
+
 def build_transform_request(transform: ToolTransform) -> bytes:
     """Build a WRITETRANSFORM request packet.
 
@@ -119,7 +124,26 @@ def build_transform_request(transform: ToolTransform) -> bytes:
 
     Returns:
         20-byte request packet.
+
+    Raises:
+        ValueError: If any transform value is outside the valid range (±327.67).
     """
+    # Validate all transform values are within int16 range when scaled by 100
+    fields = [
+        ("dx", transform.dx),
+        ("dy", transform.dy),
+        ("dz", transform.dz),
+        ("rx", transform.rx),
+        ("ry", transform.ry),
+        ("rz", transform.rz),
+    ]
+    for name, value in fields:
+        if value < TRANSFORM_VALUE_MIN or value > TRANSFORM_VALUE_MAX:
+            raise ValueError(
+                f"Transform {name}={value} is outside valid range "
+                f"[{TRANSFORM_VALUE_MIN}, {TRANSFORM_VALUE_MAX}]"
+            )
+
     request = bytearray(TRANSFORM_REQUEST_SIZE)
     request[0] = TcpCommand.WRITETRANSFORM
     request[1] = TransformDistUnits.MM

@@ -3,6 +3,12 @@
 import pytest
 
 from gsdv.protocols import CalibrationInfo, SampleRecord
+from gsdv.protocols.tcp_cmd import (
+    TRANSFORM_VALUE_MAX,
+    TRANSFORM_VALUE_MIN,
+    ToolTransform,
+    build_transform_request,
+)
 
 
 class TestSampleRecord:
@@ -216,9 +222,108 @@ class TestRdtUdp:
 class TestTcpCmd:
     """Tests for TCP command interface."""
 
-    def test_placeholder(self) -> None:
-        """Placeholder test."""
-        pass
+    def test_build_transform_request_valid_values(self) -> None:
+        """build_transform_request succeeds with values within range."""
+        transform = ToolTransform(dx=100.0, dy=-50.0, dz=0.0, rx=45.0, ry=-30.0, rz=15.5)
+        result = build_transform_request(transform)
+        assert len(result) == 20
+
+    def test_build_transform_request_at_max_boundary(self) -> None:
+        """build_transform_request succeeds at maximum boundary value."""
+        transform = ToolTransform(
+            dx=TRANSFORM_VALUE_MAX,
+            dy=TRANSFORM_VALUE_MAX,
+            dz=TRANSFORM_VALUE_MAX,
+            rx=TRANSFORM_VALUE_MAX,
+            ry=TRANSFORM_VALUE_MAX,
+            rz=TRANSFORM_VALUE_MAX,
+        )
+        result = build_transform_request(transform)
+        assert len(result) == 20
+
+    def test_build_transform_request_at_min_boundary(self) -> None:
+        """build_transform_request succeeds at minimum boundary value."""
+        transform = ToolTransform(
+            dx=TRANSFORM_VALUE_MIN,
+            dy=TRANSFORM_VALUE_MIN,
+            dz=TRANSFORM_VALUE_MIN,
+            rx=TRANSFORM_VALUE_MIN,
+            ry=TRANSFORM_VALUE_MIN,
+            rz=TRANSFORM_VALUE_MIN,
+        )
+        result = build_transform_request(transform)
+        assert len(result) == 20
+
+    def test_build_transform_request_value_exceeds_max_raises_value_error(self) -> None:
+        """build_transform_request raises ValueError when value exceeds maximum."""
+        transform = ToolTransform(dx=400.0)
+        with pytest.raises(ValueError, match=r"dx=400\.0 is outside valid range"):
+            build_transform_request(transform)
+
+    def test_build_transform_request_value_below_min_raises_value_error(self) -> None:
+        """build_transform_request raises ValueError when value below minimum."""
+        transform = ToolTransform(dy=-400.0)
+        with pytest.raises(ValueError, match=r"dy=-400\.0 is outside valid range"):
+            build_transform_request(transform)
+
+    def test_build_transform_request_error_message_includes_field_name(self) -> None:
+        """build_transform_request error message identifies the invalid field."""
+        transform = ToolTransform(rz=500.0)
+        with pytest.raises(ValueError, match=r"rz=500\.0"):
+            build_transform_request(transform)
+
+    def test_build_transform_request_error_message_includes_valid_range(self) -> None:
+        """build_transform_request error message shows valid range."""
+        transform = ToolTransform(dx=400.0)
+        with pytest.raises(
+            ValueError, match=rf"\[{TRANSFORM_VALUE_MIN}, {TRANSFORM_VALUE_MAX}\]"
+        ):
+            build_transform_request(transform)
+
+    def test_build_transform_request_values_encoded_as_int16_times_100(self) -> None:
+        """build_transform_request encodes values as int16 * 100 big-endian."""
+        import struct
+
+        transform = ToolTransform(dx=10.5, dy=-20.25, dz=0.01, rx=1.5, ry=-2.5, rz=100.0)
+        request = build_transform_request(transform)
+
+        # Extract packed int16 values from bytes 3-14
+        values = struct.unpack(">6h", request[3:15])
+        assert values[0] == 1050   # 10.5 * 100
+        assert values[1] == -2025  # -20.25 * 100
+        assert values[2] == 1      # 0.01 * 100 = 1 (truncated to int)
+        assert values[3] == 150    # 1.5 * 100
+        assert values[4] == -250   # -2.5 * 100
+        assert values[5] == 10000  # 100.0 * 100
+
+    def test_build_transform_request_zero_values_produce_zero_bytes(self) -> None:
+        """build_transform_request encodes zero transform to zero bytes."""
+        import struct
+
+        transform = ToolTransform()
+        request = build_transform_request(transform)
+
+        values = struct.unpack(">6h", request[3:15])
+        assert values == (0, 0, 0, 0, 0, 0)
+
+    def test_build_transform_request_packet_header(self) -> None:
+        """build_transform_request sets correct command and unit bytes."""
+        from gsdv.protocols.tcp_cmd import TcpCommand, TransformDistUnits, TransformAngleUnits
+
+        transform = ToolTransform(dx=10.0)
+        request = build_transform_request(transform)
+
+        assert request[0] == TcpCommand.WRITETRANSFORM
+        assert request[1] == TransformDistUnits.MM
+        assert request[2] == TransformAngleUnits.DEGREES
+
+    def test_build_transform_request_padding_bytes_are_zero(self) -> None:
+        """build_transform_request fills remaining bytes with zeros."""
+        transform = ToolTransform(dx=10.0, dy=20.0, dz=30.0, rx=1.0, ry=2.0, rz=3.0)
+        request = build_transform_request(transform)
+
+        # Bytes 15-19 (5 bytes) should be zero padding
+        assert request[15:20] == b"\x00\x00\x00\x00\x00"
 
 
 class TestHttpCalibration:
