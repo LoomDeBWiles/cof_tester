@@ -247,6 +247,14 @@ class DisplayTab(QWidget):
         """Load values from preferences."""
         self._time_window.setValue(prefs.time_window_seconds)
         self._y_autoscale.setChecked(prefs.y_autoscale)
+
+        if prefs.y_manual_min is not None:
+            self._y_manual_min.setValue(prefs.y_manual_min)
+        if prefs.y_manual_max is not None:
+            self._y_manual_max.setValue(prefs.y_manual_max)
+
+        self._on_autoscale_changed()
+
         self._show_grid.setChecked(prefs.show_grid)
         self._show_crosshair.setChecked(prefs.show_crosshair)
         self._max_points.setValue(prefs.plot_max_points_per_channel)
@@ -266,6 +274,8 @@ class DisplayTab(QWidget):
         """Save values to preferences."""
         prefs.time_window_seconds = self._time_window.value()
         prefs.y_autoscale = self._y_autoscale.isChecked()
+        prefs.y_manual_min = self._y_manual_min.value()
+        prefs.y_manual_max = self._y_manual_max.value()
         prefs.show_grid = self._show_grid.isChecked()
         prefs.show_crosshair = self._show_crosshair.isChecked()
         prefs.plot_max_points_per_channel = self._max_points.value()
