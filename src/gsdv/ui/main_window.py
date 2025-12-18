@@ -648,6 +648,12 @@ class MainWindow(QMainWindow):
         # Time window selector
         self._time_window_selector = TimeWindowSelector()
         self._time_window_selector.set_window_seconds(self._preferences.time_window_seconds)
+
+        # Sync preference with actual selector value (in case it snapped to a preset)
+        snapped_seconds = self._time_window_selector.window_seconds()
+        if snapped_seconds != self._preferences.time_window_seconds:
+            self._preferences.time_window_seconds = snapped_seconds
+
         self._time_window_selector.window_changed.connect(self._on_time_window_changed)
         main_layout.addWidget(self._time_window_selector)
 
