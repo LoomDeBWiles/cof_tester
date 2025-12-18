@@ -380,8 +380,8 @@ class TestIntegrationWithMainWindow:
 
         assert "started" in signals_received
 
-    def test_ctrl_s_shortcut_triggers_recording_stop(self, qtbot):
-        """Ctrl+S keyboard shortcut triggers record_stopped signal."""
+    def test_ctrl_shift_s_shortcut_triggers_recording_stop(self, qtbot):
+        """Ctrl+Shift+S keyboard shortcut triggers record_stopped signal."""
         from gsdv.ui import MainWindow
 
         window = MainWindow()
@@ -394,9 +394,9 @@ class TestIntegrationWithMainWindow:
             lambda: signals_received.append("stopped")
         )
 
-        # Trigger Ctrl+S shortcut
+        # Trigger Ctrl+Shift+S shortcut
         from PySide6.QtGui import QKeySequence
-        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_S)
+        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_S)
         for action in window.actions():
             if action.shortcut() == shortcut:
                 action.trigger()

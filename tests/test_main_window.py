@@ -51,11 +51,11 @@ class TestKeyboardShortcuts:
         assert action is not None, "Record shortcut (Ctrl+R) not found"
         assert action.text() == "Record"
 
-    def test_stop_shortcut_ctrl_s(self, main_window):
-        """Stop shortcut is Ctrl+S."""
-        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_S)
+    def test_stop_shortcut_ctrl_shift_s(self, main_window):
+        """Stop shortcut is Ctrl+Shift+S."""
+        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_S)
         action = find_action_by_shortcut(main_window, shortcut)
-        assert action is not None, "Stop shortcut (Ctrl+S) not found"
+        assert action is not None, "Stop shortcut (Ctrl+Shift+S) not found"
         assert action.text() == "Stop"
 
     def test_bias_shortcut_ctrl_b(self, main_window):
@@ -127,7 +127,7 @@ class TestKeyboardShortcuts:
         assert "record_started" not in signals_received
 
     def test_stop_shortcut_triggers_recording_stop(self, main_window, qtbot):
-        """Ctrl+S shortcut triggers record_stopped signal when recording."""
+        """Ctrl+Shift+S shortcut triggers record_stopped signal when recording."""
         signals_received = []
         main_window.recording_controls.record_stopped.connect(
             lambda: signals_received.append("record_stopped")
@@ -135,20 +135,20 @@ class TestKeyboardShortcuts:
         main_window.recording_controls.set_output_path("/tmp")
         main_window.recording_controls.set_recording(True)
 
-        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_S)
+        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_S)
         action = find_action_by_shortcut(main_window, shortcut)
         action.trigger()
 
         assert "record_stopped" in signals_received
 
     def test_stop_shortcut_does_nothing_when_not_recording(self, main_window, qtbot):
-        """Ctrl+S shortcut does nothing when not recording."""
+        """Ctrl+Shift+S shortcut does nothing when not recording."""
         signals_received = []
         main_window.recording_controls.record_stopped.connect(
             lambda: signals_received.append("record_stopped")
         )
 
-        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_S)
+        shortcut = QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_S)
         action = find_action_by_shortcut(main_window, shortcut)
         action.trigger()
 
