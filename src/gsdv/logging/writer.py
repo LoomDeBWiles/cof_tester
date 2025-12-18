@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from gsdv.errors import DiskFullError
+from gsdv.logging.filename import generate_filename, sanitize_extension, sanitize_prefix
 
 
 class WriterState(Enum):
@@ -111,6 +112,8 @@ class AsyncFileWriter:
         formatter: Optional[SampleFormatter] = None,
         header: Optional[str] = None,
         line_terminator: str = "\n",
+        rotate_size_bytes: Optional[int] = None,
+        rotate_interval_s: Optional[float] = None,
     ) -> None:
         """Initialize the file writer.
 
@@ -122,6 +125,8 @@ class AsyncFileWriter:
             formatter: Function to format samples as strings. Defaults to CSV.
             header: Optional header line to write at file start.
             line_terminator: String to append to each line (e.g. "\\n", "\\r\\n").
+            rotate_size_bytes: Max file size in bytes before rotation. None to disable.
+            rotate_interval_s: Max duration in seconds before rotation. None to disable.
         """
         self._path = path
         self._queue_capacity = queue_capacity
@@ -130,6 +135,14 @@ class AsyncFileWriter:
         self._formatter = formatter or default_csv_formatter
         self._header = header
         self._line_terminator = line_terminator
+        self._rotate_size_bytes = rotate_size_bytes
+        self._rotate_interval_s = rotate_interval_s
+
+        # Rotation state
+        self._rotation_enabled = (rotate_size_bytes is not None) or (rotate_interval_s is not None)
+        self._current_part = 1 if self._rotation_enabled else None
+        self._current_file_bytes = 0
+        self._current_file_start_time = 0.0
 
         # Queue for samples
         self._queue: queue.Queue[Any] = queue.Queue(maxsize=queue_capacity)
@@ -282,27 +295,83 @@ class AsyncFileWriter:
                 queue_capacity=self._queue_capacity,
             )
 
+    def _get_current_path(self) -> Path:
+        """Get the path for the current log file part."""
+        if self._current_part is None:
+            return self._path
+
+        # Insert part number before suffix
+        stem = self._path.stem
+        suffix = self._path.suffix
+        new_name = f"{stem}_part{self._current_part:03d}{suffix}"
+        return self._path.parent / new_name
+
+    def _open_current_file(self) -> None:
+        """Open the current file and write header if needed."""
+        path = self._get_current_path()
+        self._file = open(
+            path, "w", buffering=self._buffer_size, newline=""
+        )
+        self._current_file_bytes = 0
+        self._current_file_start_time = time.monotonic()
+
+        # Write header if provided
+        if self._header:
+            self._file.write(self._header)
+            self._current_file_bytes += len(self._header)
+            if not self._header.endswith("\n"):
+                self._file.write("\n")
+                self._current_file_bytes += 1
+
+    def _rotate_file(self) -> None:
+        """Close current file and open next part."""
+        if self._file is not None:
+            self._file.flush()
+            os.fsync(self._file.fileno())
+            self._file.close()
+            self._file = None
+
+        if self._current_part is not None:
+            self._current_part += 1
+
+        self._open_current_file()
+
+    def _should_rotate(self) -> bool:
+        """Check if rotation is triggered."""
+        if not self._rotation_enabled:
+            return False
+
+        if (
+            self._rotate_size_bytes is not None
+            and self._current_file_bytes >= self._rotate_size_bytes
+        ):
+            return True
+
+        if (
+            self._rotate_interval_s is not None
+            and (time.monotonic() - self._current_file_start_time) >= self._rotate_interval_s
+        ):
+            return True
+
+        return False
+
     def _writer_loop(self) -> None:
         """Main writer loop running in dedicated thread."""
         try:
-            self._file = open(
-                self._path, "w", buffering=self._buffer_size, newline=""
-            )
-
-            # Write header if provided
-            if self._header:
-                self._file.write(self._header)
-                if not self._header.endswith("\n") and not self._header.endswith("\r"):
-                     # Add terminator if header doesn't imply one (heuristic)
-                     # But safer to just check if we need one or if header is just preamble
-                     # If header is multi-line, it might have its own newlines.
-                     # We usually want a terminator after header.
-                     self._file.write(self._line_terminator)
+            self._open_current_file()
 
             buffer: list[str] = []
             last_flush = time.monotonic()
 
             while not self._stop_event.is_set():
+                # Check rotation
+                if self._should_rotate():
+                    if buffer:
+                        self._flush_buffer(buffer)
+                        buffer = []
+                    self._rotate_file()
+                    last_flush = time.monotonic()
+
                 # Calculate timeout to ensure regular flushes
                 now = time.monotonic()
                 elapsed = now - last_flush
@@ -335,16 +404,26 @@ class AsyncFileWriter:
                 try:
                     sample = self._queue.get_nowait()
                     if sample is not None:
+                        # Check rotation even during drain?
+                        # Probably yes, but let's keep it simple for now and allow
+                        # the last file to be slightly larger if needed, or implement check.
+                        # Implementing check for correctness:
+                        if self._should_rotate():
+                             self._rotate_file()
+
                         line = self._formatter(sample) + self._line_terminator
                         self._file.write(line)
+                        byte_len = len(line.encode("utf-8"))
+                        self._current_file_bytes += byte_len
                         with self._stats_lock:
                             self._samples_written += 1
-                            self._bytes_written += len(line.encode("utf-8"))
+                            self._bytes_written += byte_len
                 except queue.Empty:
                     break
 
-            self._file.flush()
-            os.fsync(self._file.fileno())
+            if self._file:
+                self._file.flush()
+                os.fsync(self._file.fileno())
 
         except OSError as e:
             with self._state_lock:
@@ -368,10 +447,13 @@ class AsyncFileWriter:
         self._file.write(data)
         self._file.flush()
         elapsed_ms = (time.perf_counter() - start) * 1000
+        
+        byte_len = len(data.encode("utf-8"))
+        self._current_file_bytes += byte_len
 
         with self._stats_lock:
             self._samples_written += len(buffer)
-            self._bytes_written += len(data.encode("utf-8"))
+            self._bytes_written += byte_len
             self._flushes += 1
             self._flush_latencies.append(elapsed_ms)
             # Keep only last 100 latency samples

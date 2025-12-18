@@ -14,6 +14,18 @@ from gsdv.logging.writer import (
     WriterStats,
     default_csv_formatter,
 )
+from gsdv.logging.formats import (
+    FORMAT_CSV,
+    FORMAT_TSV,
+    FORMAT_EXCEL,
+    BOM_UTF8,
+    csv_formatter,
+    tsv_formatter,
+    excel_formatter,
+    get_column_headers,
+    get_metadata_header,
+)
+from gsdv.models import SampleRecord, CalibrationInfo
 
 
 class TestWriterStats:
@@ -115,6 +127,10 @@ class TestDefaultCsvFormatter:
         sample = ()
         result = default_csv_formatter(sample)
         assert result == ""
+    
+    def test_handles_string(self) -> None:
+        result = default_csv_formatter("test")
+        assert result == "test"
 
 
 class TestAsyncFileWriterInit:
@@ -248,6 +264,17 @@ class TestAsyncFileWriterOutput:
         content = path.read_text().strip()
         lines = content.split("\n")
         assert len(lines) == 50
+    
+    def test_custom_line_terminator(self, tmp_path: Path) -> None:
+        path = tmp_path / "test.txt"
+        with AsyncFileWriter(path, line_terminator="\r\n") as writer:
+            writer.write((1, 2))
+            writer.write((3, 4))
+        
+        with open(path, "rb") as f:
+            content = f.read()
+            assert b"\r\n" in content
+            assert b"1,2\r\n3,4\r\n" == content
 
 
 class TestAsyncFileWriterStats:
@@ -328,7 +355,7 @@ class TestAsyncFileWriterThreadSafety:
                     writer.write((thread_id, i))
 
             threads = [
-                threading.Thread(target=write_samples, args=(tid,))
+                threading.Thread(target=write_samples, args=(tid,)) 
                 for tid in range(num_threads)
             ]
             for t in threads:
@@ -479,6 +506,97 @@ class TestAsyncFileWriterMemory:
 class TestExportFormats:
     """Tests for CSV/TSV/Excel export formats."""
 
-    def test_placeholder(self) -> None:
-        """Placeholder test for future export format implementations."""
-        pass
+    @pytest.fixture
+    def sample(self) -> SampleRecord:
+        return SampleRecord(
+            t_monotonic_ns=1000,
+            rdt_sequence=1,
+            ft_sequence=2,
+            status=0,
+            counts=(10, 20, 30, 40, 50, 60),
+            force_N=(1.1, 2.2, 3.3),
+            torque_Nm=(4.4, 5.5, 6.6),
+        )
+
+    def test_csv_formatter(self, sample: SampleRecord) -> None:
+        line = csv_formatter(sample)
+        expected = "1000,1,2,0,10,20,30,40,50,60,1.100000,2.200000,3.300000,4.400000,5.500000,6.600000"
+        assert line == expected
+
+    def test_tsv_formatter(self, sample: SampleRecord) -> None:
+        line = tsv_formatter(sample)
+        expected = "1000\t1\t2\t0\t10\t20\t30\t40\t50\t60\t1.100000\t2.200000\t3.300000\t4.400000\t5.500000\t6.600000"
+        assert line == expected
+
+    def test_csv_formatter_handles_none_values(self) -> None:
+        # Sample with no forces/torques
+        sample = SampleRecord(
+            t_monotonic_ns=1000,
+            rdt_sequence=1,
+            ft_sequence=2,
+            status=0,
+            counts=(10, 20, 30, 40, 50, 60),
+            force_N=None,
+            torque_Nm=None,
+        )
+        line = csv_formatter(sample)
+        # Should have empty strings for last 6 columns (requires 6 commas)
+        expected = "1000,1,2,0,10,20,30,40,50,60,,,,,,"
+        assert line == expected
+
+    def test_metadata_header_csv(self) -> None:
+        cal = CalibrationInfo(counts_per_force=100.0, counts_per_torque=20.0)
+        ident = {"serial_number": "SN123", "firmware_version": "1.0"}
+        
+        header = get_metadata_header(FORMAT_CSV, calibration=cal, identity=ident)
+        
+        lines = header.split("\n")
+        assert any("Serial Number: SN123" in line for line in lines)
+        assert any("Counts Per Force: 100.0" in line for line in lines)
+        # Check column header presence
+        assert "t_monotonic_ns,rdt_sequence" in lines[-1]
+
+    def test_metadata_header_excel(self) -> None:
+        cal = CalibrationInfo(counts_per_force=100.0, counts_per_torque=20.0)
+        ident = {"serial_number": "SN123", "firmware_version": "1.0"}
+        
+        header = get_metadata_header(FORMAT_EXCEL, calibration=cal, identity=ident)
+        
+        # Should start with BOM
+        assert header.startswith(BOM_UTF8)
+        # Should use CRLF
+        assert "\r\n" in header
+        
+        # Check content
+        assert "Serial Number: SN123" in header
+
+    def test_integration_excel_writer(self, tmp_path: Path, sample: SampleRecord) -> None:
+        """End-to-end test for Excel-compatible export."""
+        path = tmp_path / "export.csv"
+        
+        cal = CalibrationInfo(counts_per_force=100.0, counts_per_torque=20.0)
+        ident = {"serial_number": "SN123"}
+        header = get_metadata_header(FORMAT_EXCEL, calibration=cal, identity=ident)
+        
+        with AsyncFileWriter(
+            path, 
+            formatter=excel_formatter, 
+            header=header, 
+            line_terminator="\r\n"
+        ) as writer:
+            writer.write(sample)
+            
+        # Read back in binary to check BOM and CRLF
+        with open(path, "rb") as f:
+            content = f.read()
+            
+        # Check BOM
+        assert content.startswith(b"\xef\xbb\xbf")  # UTF-8 BOM
+        
+        # Check CRLF
+        assert b"\r\n" in content
+        
+        # Decode and check text content
+        text = content.decode("utf-8-sig") # decoding with sig removes BOM
+        assert "# Serial Number: SN123" in text
+        assert "1000,1,2,0" in text  # Data row presence
