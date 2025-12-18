@@ -676,6 +676,12 @@ class MainWindow(QMainWindow):
         self._plot_area.set_window_seconds(self._preferences.time_window_seconds)
         self._plot_area.set_units(self._preferences.force_unit, self._preferences.torque_unit)
 
+        # Apply Y-axis scaling preferences
+        if self._preferences.y_autoscale:
+            self._plot_area.enable_y_autoscale()
+        elif self._preferences.y_manual_min is not None and self._preferences.y_manual_max is not None:
+            self._plot_area.set_y_range(self._preferences.y_manual_min, self._preferences.y_manual_max)
+
         # Connect channel selector
         self._channel_selector.channel_toggled.connect(self._plot_area.set_channel_visible)
 
