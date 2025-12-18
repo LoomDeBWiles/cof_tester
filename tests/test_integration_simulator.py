@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from gsdv.diagnostics.cli import cmd_discover, cmd_log, cmd_stream
 from gsdv.protocols.http_calibration import HttpCalibrationClient
 from gsdv.protocols.rdt_udp import RdtClient
@@ -376,6 +378,7 @@ class TestCliDiscover:
         args = argparse.Namespace(
             subnet="127.0.0.1/32",
             timeout=1.0,
+            http_port=sensor_simulator.config.http_port,
         )
 
         result = cmd_discover(args)
@@ -390,6 +393,7 @@ class TestCliDiscover:
         args = argparse.Namespace(
             subnet="127.0.0.1/32",
             timeout=1.0,
+            http_port=sensor_simulator.config.http_port,
         )
 
         cmd_discover(args)
@@ -402,6 +406,7 @@ class TestCliDiscover:
         args = argparse.Namespace(
             subnet="192.0.2.0/30",
             timeout=0.1,
+            http_port=80,
         )
 
         result = cmd_discover(args)
@@ -415,6 +420,7 @@ class TestCliDiscover:
         args = argparse.Namespace(
             subnet="not-a-subnet",
             timeout=0.1,
+            http_port=80,
         )
 
         result = cmd_discover(args)
@@ -476,6 +482,7 @@ class TestCliSubprocess:
                 "discover",
                 "--subnet", "127.0.0.1/32",
                 "--timeout", "1.0",
+                "--http-port", str(sensor_simulator.config.http_port),
             ],
             capture_output=True,
             text=True,
