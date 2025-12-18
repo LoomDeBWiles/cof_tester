@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from gsdv.errors import DiskFullError
-from gsdv.logging.filename import generate_filename, sanitize_extension, sanitize_prefix
 
 
 class WriterState(Enum):
@@ -165,6 +164,7 @@ class AsyncFileWriter:
 
         # File handle (managed by writer thread)
         self._file: Optional[io.TextIOWrapper] = None
+        self._error: Optional[BaseException] = None
 
     @property
     def path(self) -> Path:
@@ -182,6 +182,12 @@ class AsyncFileWriter:
         """Whether the writer is currently running."""
         return self.state == WriterState.RUNNING
 
+    @property
+    def last_error(self) -> Optional[BaseException]:
+        """Last exception encountered by the writer thread, if any."""
+        with self._state_lock:
+            return self._error
+
     def start(self) -> None:
         """Start the writer thread.
 
@@ -195,6 +201,7 @@ class AsyncFileWriter:
             if self._state == WriterState.RUNNING:
                 raise RuntimeError("Writer already running")
             self._state = WriterState.RUNNING
+            self._error = None
 
         # Reset state
         self._stop_event.clear()
@@ -230,9 +237,10 @@ class AsyncFileWriter:
             timeout: Maximum seconds to wait for thread to finish.
         """
         with self._state_lock:
-            if self._state != WriterState.RUNNING:
+            if self._state == WriterState.STOPPED:
                 return
-            self._state = WriterState.STOPPING
+            if self._state == WriterState.RUNNING:
+                self._state = WriterState.STOPPING
 
         # Signal thread to stop
         self._stop_event.set()
@@ -245,10 +253,12 @@ class AsyncFileWriter:
         # Wait for writer thread
         if self._writer_thread is not None:
             self._writer_thread.join(timeout=timeout)
-            self._writer_thread = None
+            if not self._writer_thread.is_alive():
+                self._writer_thread = None
 
         with self._state_lock:
-            self._state = WriterState.STOPPED
+            if self._state == WriterState.STOPPING:
+                self._state = WriterState.STOPPED
 
     def write(self, sample: Any) -> bool:
         """Write a sample to the queue (non-blocking).
@@ -403,35 +413,39 @@ class AsyncFileWriter:
             while True:
                 try:
                     sample = self._queue.get_nowait()
-                    if sample is not None:
-                        # Check rotation even during drain?
-                        # Probably yes, but let's keep it simple for now and allow
-                        # the last file to be slightly larger if needed, or implement check.
-                        # Implementing check for correctness:
-                        if self._should_rotate():
-                             self._rotate_file()
-
-                        line = self._formatter(sample) + self._line_terminator
-                        self._file.write(line)
-                        byte_len = len(line.encode("utf-8"))
-                        self._current_file_bytes += byte_len
-                        with self._stats_lock:
-                            self._samples_written += 1
-                            self._bytes_written += byte_len
                 except queue.Empty:
                     break
+                if sample is None:
+                    continue
+
+                if self._should_rotate():
+                    self._rotate_file()
+
+                line = self._formatter(sample) + self._line_terminator
+                if self._file is None:
+                    return
+                self._file.write(line)
+                byte_len = len(line.encode("utf-8"))
+                self._current_file_bytes += byte_len
+                with self._stats_lock:
+                    self._samples_written += 1
+                    self._bytes_written += byte_len
 
             if self._file:
                 self._file.flush()
                 os.fsync(self._file.fileno())
 
         except OSError as e:
+            error: BaseException = e
+            if e.errno == errno.ENOSPC:
+                error = DiskFullError(str(self._get_current_path()))
             with self._state_lock:
                 self._state = WriterState.ERROR
-            
-            if e.errno == errno.ENOSPC:
-                raise DiskFullError(str(self._path)) from e
-            raise
+                self._error = error
+        except Exception as e:  # noqa: BLE001
+            with self._state_lock:
+                self._state = WriterState.ERROR
+                self._error = e
         finally:
             if self._file is not None:
                 self._file.close()

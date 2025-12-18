@@ -20,6 +20,7 @@ def pytest_configure(config):
     """Disable pytest-qt if Qt is not available."""
     if not _qt_is_available():
         config.pluginmanager.set_blocked("pytest-qt")
+        config.pluginmanager.set_blocked("pytestqt")
 
 
 # Disable Qt test modules if Qt is not available
