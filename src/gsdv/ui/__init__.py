@@ -6,6 +6,8 @@ from gsdv.ui.main_window import (
     MainWindow,
     NumericDisplay,
     RecordingControls,
+    SensorInfoDisplay,
+    is_valid_ipv4,
 )
 from gsdv.ui.settings_dialog import SettingsDialog
 
@@ -15,5 +17,7 @@ __all__ = [
     "MainWindow",
     "NumericDisplay",
     "RecordingControls",
+    "SensorInfoDisplay",
     "SettingsDialog",
+    "is_valid_ipv4",
 ]

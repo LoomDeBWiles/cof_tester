@@ -474,6 +474,7 @@ class MainWindow(QMainWindow):
     # Signals
     theme_changed = Signal(str)
     bias_requested = Signal()
+    display_settings_changed = Signal()  # Emitted when unit or filter settings change
 
     def __init__(
         self,
@@ -482,7 +483,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__(parent)
         self._preferences = preferences or UserPreferences()
-        self._current_theme = self.LIGHT_THEME
+        self._current_theme = self._preferences.theme
         self._setup_ui()
         self._setup_shortcuts()
         self._apply_theme()
@@ -770,13 +771,15 @@ class MainWindow(QMainWindow):
     def set_theme(self, theme: str) -> None:
         """Set the theme explicitly.
 
-        Emits theme_changed signal if the theme actually changes.
+        Updates preferences and emits theme_changed signal if the theme
+        actually changes.
         """
         if theme not in (self.DARK_THEME, self.LIGHT_THEME):
             return
         if theme == self._current_theme:
             return
         self._current_theme = theme
+        self._preferences.theme = theme
         self._apply_theme()
         self.theme_changed.emit(theme)
 
@@ -787,7 +790,21 @@ class MainWindow(QMainWindow):
     def _on_settings_clicked(self) -> None:
         """Handle settings button click."""
         dialog = SettingsDialog(self._preferences, self)
+        dialog.settings_applied.connect(self._on_settings_applied)
         dialog.exec()
+
+    def _on_settings_applied(self) -> None:
+        """Handle settings changes from the settings dialog.
+
+        Updates the display to reflect new settings:
+        - Theme changes are applied immediately
+        - Unit preference changes affect how values are displayed
+        - Filter settings are stored for use by the processing pipeline
+        """
+        # Apply theme if changed
+        self.set_theme(self._preferences.theme)
+        # Notify listeners that display settings (units, filtering) have changed
+        self.display_settings_changed.emit()
 
     def _on_connect_shortcut(self) -> None:
         """Handle Ctrl+Enter shortcut for connect."""
@@ -852,3 +869,23 @@ class MainWindow(QMainWindow):
     def show_status_message(self, message: str, timeout_ms: int = 3000) -> None:
         """Show a temporary message in the status bar."""
         self._status_bar.showMessage(message, timeout_ms)
+
+    @property
+    def force_unit(self) -> str:
+        """Return the current force unit preference."""
+        return self._preferences.force_unit
+
+    @property
+    def torque_unit(self) -> str:
+        """Return the current torque unit preference."""
+        return self._preferences.torque_unit
+
+    @property
+    def filter_enabled(self) -> bool:
+        """Return whether the low-pass filter is enabled."""
+        return self._preferences.filter_enabled
+
+    @property
+    def filter_cutoff_hz(self) -> float:
+        """Return the filter cutoff frequency in Hz."""
+        return self._preferences.filter_cutoff_hz
