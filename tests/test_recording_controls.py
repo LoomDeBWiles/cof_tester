@@ -260,6 +260,22 @@ class TestRecordingStatistics:
         assert "1:30" in recording_controls._duration_label.text()
         assert "KB" in recording_controls._size_label.text()
 
+    def test_update_recording_stats_negative_duration_clamped_to_zero(self, recording_controls):
+        """Negative duration is clamped to zero."""
+        recording_controls.update_recording_stats(duration_seconds=-10.0, file_size_bytes=0)
+        assert recording_controls._duration_label.text() == "0:00"
+
+    def test_update_recording_stats_negative_file_size_clamped_to_zero(self, recording_controls):
+        """Negative file size is clamped to zero."""
+        recording_controls.update_recording_stats(duration_seconds=0.0, file_size_bytes=-1024)
+        assert recording_controls._size_label.text() == "0 B"
+
+    def test_update_recording_stats_both_negative_clamped_to_zero(self, recording_controls):
+        """Both negative duration and file size are clamped to zero."""
+        recording_controls.update_recording_stats(duration_seconds=-5.0, file_size_bytes=-500)
+        assert recording_controls._duration_label.text() == "0:00"
+        assert recording_controls._size_label.text() == "0 B"
+
 
 class TestRecordingControlsSignals:
     """Tests for signal emissions."""

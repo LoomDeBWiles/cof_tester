@@ -43,6 +43,8 @@ class TestUserPreferences:
         assert prefs.channels_enabled == ["Fx", "Fy", "Fz"]
         assert prefs.time_window_seconds == 10.0
         assert prefs.y_autoscale is True
+        assert prefs.y_manual_min is None
+        assert prefs.y_manual_max is None
         assert prefs.show_grid is True
         assert prefs.show_crosshair is False
         assert prefs.plot_max_points_per_channel == 10000
@@ -138,6 +140,9 @@ class TestPreferencesStore:
         prefs.filter_cutoff_hz = 50.0
         prefs.theme = "light"
         prefs.transform_dx = 10.5
+        prefs.y_autoscale = False
+        prefs.y_manual_min = -50.0
+        prefs.y_manual_max = 150.0
 
         store.save(prefs)
 
@@ -151,6 +156,9 @@ class TestPreferencesStore:
         assert loaded.filter_cutoff_hz == 50.0
         assert loaded.theme == "light"
         assert loaded.transform_dx == 10.5
+        assert loaded.y_autoscale is False
+        assert loaded.y_manual_min == -50.0
+        assert loaded.y_manual_max == 150.0
 
     def test_save_updates_timestamp(self, tmp_path: Path) -> None:
         """Saving sets last_updated_utc to current time."""

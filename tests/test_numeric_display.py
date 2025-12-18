@@ -1,6 +1,5 @@
 """Tests for NumericDisplay widget and real-time value updates."""
 
-import numpy as np
 import pytest
 
 # Skip entire module if Qt is not available
@@ -11,11 +10,10 @@ try:
 except ImportError:
     pytest.skip("PySide6 not usable", allow_module_level=True)
 
-from PySide6.QtCore import Qt
 
 from gsdv.acquisition.ring_buffer import RingBuffer
 from gsdv.plot.plot_widget import MultiChannelPlot
-from gsdv.ui.main_window import NumericDisplay, MainWindow
+from gsdv.ui.main_window import MainWindow, NumericDisplay
 
 
 @pytest.fixture

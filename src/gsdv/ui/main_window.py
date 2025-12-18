@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ipaddress
 import os
-import re
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -546,6 +545,10 @@ class RecordingControls(QGroupBox):
 
     def update_recording_stats(self, duration_seconds: float, file_size_bytes: int) -> None:
         """Update recording duration and file size display."""
+        if duration_seconds < 0:
+            duration_seconds = 0
+        if file_size_bytes < 0:
+            file_size_bytes = 0
         minutes, seconds = divmod(int(duration_seconds), 60)
         hours, minutes = divmod(minutes, 60)
         if hours > 0:
@@ -682,6 +685,10 @@ class MainWindow(QMainWindow):
         elif self._preferences.y_manual_min is not None and self._preferences.y_manual_max is not None:
             self._plot_area.set_y_range(self._preferences.y_manual_min, self._preferences.y_manual_max)
 
+        # Apply grid and crosshair preferences
+        self._plot_area.set_grid_enabled(self._preferences.show_grid)
+        self._plot_area.set_crosshair_enabled(self._preferences.show_crosshair)
+
         # Connect channel selector
         self._channel_selector.channel_toggled.connect(self._plot_area.set_channel_visible)
 
@@ -736,9 +743,9 @@ class MainWindow(QMainWindow):
         record_action.triggered.connect(self._on_record_shortcut)
         self.addAction(record_action)
 
-        # Stop recording: Ctrl+S
+        # Stop recording: Ctrl+Shift+S (Ctrl+S is reserved for Save)
         stop_action = QAction("Stop", self)
-        stop_action.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_S))
+        stop_action.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_S))
         stop_action.triggered.connect(self._on_stop_shortcut)
         self.addAction(stop_action)
 
@@ -748,7 +755,7 @@ class MainWindow(QMainWindow):
         bias_action.triggered.connect(self._on_bias_shortcut)
         self.addAction(bias_action)
 
-        # Settings: Ctrl+, 
+        # Settings: Ctrl+,
         settings_action = QAction("Settings", self)
         settings_action.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_Comma))
         settings_action.triggered.connect(self._on_settings_clicked)
@@ -959,11 +966,20 @@ class MainWindow(QMainWindow):
         - Unit preference changes affect how values are displayed
         - Filter settings are stored for use by the processing pipeline
         - Transform settings are sent to the sensor (if connected)
+        - Y-axis scaling preferences are applied to the plot
         """
         # Apply theme if changed
         self.set_theme(self._preferences.theme)
         # Apply units to plot
         self._plot_area.set_units(self._preferences.force_unit, self._preferences.torque_unit)
+        # Apply Y-axis scaling preferences
+        if self._preferences.y_autoscale:
+            self._plot_area.enable_y_autoscale()
+        elif self._preferences.y_manual_min is not None and self._preferences.y_manual_max is not None:
+            self._plot_area.set_y_range(self._preferences.y_manual_min, self._preferences.y_manual_max)
+        # Apply grid and crosshair preferences
+        self._plot_area.set_grid_enabled(self._preferences.show_grid)
+        self._plot_area.set_crosshair_enabled(self._preferences.show_crosshair)
         # Notify listeners that display settings (units, filtering) have changed
         self.display_settings_changed.emit()
         # Emit transform with current values from preferences
@@ -976,7 +992,7 @@ class MainWindow(QMainWindow):
             rz=self._preferences.transform_rz,
         )
         self.transform_requested.emit(transform)
-        
+
     def update_calibration(self, calibration: CalibrationInfo) -> None:
         """Update calibration info in UI widgets.
 
@@ -992,11 +1008,11 @@ class MainWindow(QMainWindow):
 
     def _on_record_shortcut(self) -> None:
         """Handle Ctrl+R shortcut for record."""
-        if not self._recording_controls._recording:
+        if not self._recording_controls._recording and self._recording_controls.get_output_path():
             self._recording_controls._on_record_clicked()
 
     def _on_stop_shortcut(self) -> None:
-        """Handle Ctrl+S shortcut for stop."""
+        """Handle Ctrl+Shift+S shortcut for stop."""
         if self._recording_controls._recording:
             self._recording_controls._on_record_clicked()
 
@@ -1042,9 +1058,9 @@ class MainWindow(QMainWindow):
         return self._time_window_selector
 
     @property
-    def plot_controls(self) -> PlotControls:
-        """Return the plot controls widget."""
-        return self._plot_controls
+    def plot_area(self) -> MultiChannelPlot:
+        """Return the plot area widget."""
+        return self._plot_area
 
     @property
     def numeric_display(self) -> NumericDisplay:

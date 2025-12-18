@@ -4,13 +4,13 @@ Provides a PlotWidget for displaying time-series force/torque data from
 the acquisition engine. Designed for 30fps refresh with autoscale.
 """
 
-from typing import Any, Optional, Tuple, Dict
+from typing import Any
 
 import numpy as np
 import pyqtgraph as pg
 from numpy.typing import NDArray
-from PySide6.QtCore import QTimer, QPointF
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QLabel
+from PySide6.QtCore import QPointF, QTimer
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
 class MultiChannelPlot(QWidget):
@@ -43,9 +43,9 @@ class MultiChannelPlot(QWidget):
 
     def __init__(
         self,
-        buffer: Optional[object] = None,
+        buffer: object | None = None,
         sample_rate: float = 1000.0,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ) -> None:
         """Initialize the plot widget.
 
@@ -58,22 +58,22 @@ class MultiChannelPlot(QWidget):
         self._buffer = buffer
         self._sample_rate = sample_rate
         self._window_seconds = self.DEFAULT_WINDOW_SECONDS
-        
+
         # Calibration factors (counts per unit)
         self._counts_per_force = 1.0
         self._counts_per_torque = 1.0
-        
+
         # Units
         self._force_unit = ""
         self._torque_unit = ""
 
         # Y-axis scaling state
         self._y_autoscale = True
-        self._y_range_min: Optional[float] = None
-        self._y_range_max: Optional[float] = None
+        self._y_range_min: float | None = None
+        self._y_range_max: float | None = None
 
         # Curves
-        self._lines: Dict[str, pg.PlotDataItem] = {}
+        self._lines: dict[str, pg.PlotDataItem] = {}
 
         # Grid and crosshair state
         self._grid_enabled = True
@@ -104,14 +104,14 @@ class MultiChannelPlot(QWidget):
 
         # Enable autoscale by default (Y-axis only since X is time-windowed)
         self._plot_item.enableAutoRange(axis="y")
-        
+
         # Add Legend
         self._legend = self._plot_item.addLegend(offset=(10, 10))
 
         # Create the line plot items
         for channel in self.CHANNEL_NAMES:
             pen = pg.mkPen(color=self.CHANNEL_COLORS[channel], width=1.5)
-            # Create curve but don't add to legend automatically yet, 
+            # Create curve but don't add to legend automatically yet,
             # as pyqtgraph adds it if name is provided.
             line = self._plot_item.plot(name=channel, pen=pen)
             line.setClipToView(True)
@@ -184,7 +184,7 @@ class MultiChannelPlot(QWidget):
              label = f"Force ({force_unit})"
         elif torque_unit:
              label = f"Torque ({torque_unit})"
-        
+
         self._plot_item.setLabel("left", label)
 
     def set_channel_visible(self, channel: str, visible: bool) -> None:
@@ -243,7 +243,7 @@ class MultiChannelPlot(QWidget):
         """Return whether Y-axis autoscale is enabled."""
         return self._y_autoscale
 
-    def get_y_range(self) -> Optional[Tuple[float, float]]:
+    def get_y_range(self) -> tuple[float, float] | None:
         """Return the current manual Y-axis range, or None if autoscaling."""
         if self._y_autoscale:
             return None
@@ -338,6 +338,42 @@ class MultiChannelPlot(QWidget):
         """Clear the plot data."""
         for line in self._lines.values():
             line.setData([], [])
+
+    def get_latest_values(self) -> dict[str, tuple[float, str]] | None:
+        """Get the latest calibrated values for all channels.
+
+        Returns the most recent sample from the buffer, converted to engineering
+        units using the current calibration factors.
+
+        Returns:
+            Dictionary mapping channel names to (value, unit) tuples,
+            or None if no data is available.
+        """
+        if self._buffer is None:
+            return None
+
+        data = self._buffer.get_latest(1)
+        if data is None:
+            return None
+
+        counts = data["counts"]
+        if len(counts) == 0:
+            return None
+
+        # Get the most recent sample's counts (shape is (1, 6))
+        latest_counts = counts[0]
+
+        result: dict[str, tuple[float, str]] = {}
+        for i, channel in enumerate(self.CHANNEL_NAMES):
+            if channel in ("Fx", "Fy", "Fz"):
+                value = float(latest_counts[i]) / self._counts_per_force
+                unit = self._force_unit
+            else:
+                value = float(latest_counts[i]) / self._counts_per_torque
+                unit = self._torque_unit
+            result[channel] = (value, unit)
+
+        return result
 
     def _update_plot(self) -> None:
         """Update the plot with latest data from the buffer."""
