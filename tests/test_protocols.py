@@ -1,14 +1,18 @@
 """Tests for RDT, TCP, and HTTP protocol implementations."""
 
 import pytest
+from pathlib import Path
 
 from gsdv.protocols import CalibrationInfo, SampleRecord
+from gsdv.protocols.rdt_udp import parse_rdt_response
 from gsdv.protocols.tcp_cmd import (
     TRANSFORM_VALUE_MAX,
     TRANSFORM_VALUE_MIN,
     ToolTransform,
     build_transform_request,
+    parse_calinfo_response,
 )
+from gsdv.protocols.http_calibration import parse_calibration_xml
 
 
 class TestSampleRecord:
@@ -214,13 +218,31 @@ class TestCalibrationInfo:
 class TestRdtUdp:
     """Tests for UDP RDT streaming protocol."""
 
-    def test_placeholder(self) -> None:
-        """Placeholder test."""
-        pass
+    def test_parse_rdt_packet_from_fixture(self) -> None:
+        """Parse RDT packet from binary fixture."""
+        fixture_path = Path("tests/fixtures/rdt_packet.bin")
+        data = fixture_path.read_bytes()
+        rdt_seq, ft_seq, status, counts = parse_rdt_response(data)
+
+        assert rdt_seq == 1
+        assert ft_seq == 100
+        assert status == 0
+        assert counts == (1000, 2000, 3000, 400, 500, 600)
 
 
 class TestTcpCmd:
     """Tests for TCP command interface."""
+
+    def test_parse_calinfo_response_from_fixture(self) -> None:
+        """Parse calibration info from binary fixture."""
+        fixture_path = Path("tests/fixtures/tcp_calinfo.bin")
+        data = fixture_path.read_bytes()
+        cal = parse_calinfo_response(data)
+
+        assert cal.counts_per_force == 1000000.0
+        assert cal.counts_per_torque == 1000000.0
+        assert cal.force_units_code == 2
+        assert cal.torque_units_code == 3
 
     def test_build_transform_request_valid_values(self) -> None:
         """build_transform_request succeeds with values within range."""
@@ -329,6 +351,15 @@ class TestTcpCmd:
 class TestHttpCalibration:
     """Tests for HTTP calibration retrieval."""
 
-    def test_placeholder(self) -> None:
-        """Placeholder test."""
-        pass
+    def test_parse_calibration_xml_from_fixture(self) -> None:
+        """Parse calibration XML from fixture."""
+        fixture_path = Path("tests/fixtures/netftapi2.xml")
+        xml_content = fixture_path.read_text()
+        cal = parse_calibration_xml(xml_content)
+
+        assert cal.counts_per_force == 1000000.0
+        assert cal.counts_per_torque == 1000000.0
+        assert cal.serial_number == "FT12345"
+        assert cal.firmware_version == "1.0.0"
+        assert cal.force_units_code == 2
+        assert cal.torque_units_code == 3

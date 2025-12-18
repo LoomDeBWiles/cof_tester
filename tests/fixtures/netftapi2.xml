@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<netft>
+    <cfgcpf>1000000</cfgcpf>
+    <cfgcpt>1000000</cfgcpt>
+    <cfgfu>2</cfgfu>
+    <cfgtu>3</cfgtu>
+    <setserial>FT12345</setserial>
+    <setfwver>1.0.0</setfwver>
+</netft>

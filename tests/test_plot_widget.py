@@ -76,6 +76,18 @@ class TestSingleChannelPlotInitialization:
         qtbot.addWidget(widget)
         assert widget._counts_per_unit == 1.0
 
+    def test_default_sample_rate(self, qtbot):
+        """Default sample_rate is 1000.0."""
+        widget = SingleChannelPlot()
+        qtbot.addWidget(widget)
+        assert widget._sample_rate == 1000.0
+
+    def test_custom_sample_rate(self, qtbot):
+        """Can specify custom sample rate at init."""
+        widget = SingleChannelPlot(sample_rate=500.0)
+        qtbot.addWidget(widget)
+        assert widget._sample_rate == 500.0
+
     def test_timer_not_running_on_init(self, qtbot):
         """Timer is not running immediately after init."""
         widget = SingleChannelPlot()

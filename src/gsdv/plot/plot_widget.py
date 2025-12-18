@@ -4,7 +4,7 @@ Provides a PlotWidget for displaying time-series force/torque data from
 the acquisition engine. Designed for 30fps refresh with autoscale.
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pyqtgraph as pg
@@ -41,6 +41,7 @@ class SingleChannelPlot(QWidget):
         self,
         buffer: Optional[RingBuffer] = None,
         channel_index: int = 0,
+        sample_rate: float = 1000.0,
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize the plot widget.
@@ -48,15 +49,22 @@ class SingleChannelPlot(QWidget):
         Args:
             buffer: Ring buffer to read data from.
             channel_index: Index of the channel to display (0-5 for Fx-Tz).
+            sample_rate: Sampling rate in Hz (default: 1000.0).
             parent: Parent widget.
         """
         super().__init__(parent)
         self._buffer = buffer
         self._channel_index = channel_index
         self._channel_label = self.CHANNEL_NAMES[channel_index]
+        self._sample_rate = sample_rate
         self._unit = ""
         self._window_seconds = self.DEFAULT_WINDOW_SECONDS
         self._counts_per_unit = 1.0
+
+        # Y-axis scaling state
+        self._y_autoscale = True
+        self._y_range_min: Optional[float] = None
+        self._y_range_max: Optional[float] = None
 
         self._setup_ui()
         self._setup_timer()
@@ -81,8 +89,8 @@ class SingleChannelPlot(QWidget):
         self._plot_item.setLabel("bottom", "Time", units="s")
         self._update_y_label()
 
-        # Enable autoscale
-        self._plot_item.enableAutoRange()
+        # Enable autoscale by default (Y-axis only since X is time-windowed)
+        self._plot_item.enableAutoRange(axis="y")
 
         # Create the line plot item
         self._line = self._plot_item.plot(
@@ -156,6 +164,16 @@ class SingleChannelPlot(QWidget):
             raise ValueError(f"counts_per_unit must be positive, got {cpf}")
         self._counts_per_unit = cpf
 
+    def set_sample_rate(self, rate_hz: float) -> None:
+        """Set the sampling rate.
+
+        Args:
+            rate_hz: Sampling rate in Hz.
+        """
+        if rate_hz <= 0:
+            raise ValueError(f"sample_rate must be positive, got {rate_hz}")
+        self._sample_rate = rate_hz
+
     def set_window_seconds(self, seconds: float) -> None:
         """Set the time window displayed on the X-axis.
 
@@ -165,6 +183,52 @@ class SingleChannelPlot(QWidget):
         if seconds <= 0:
             raise ValueError(f"window_seconds must be positive, got {seconds}")
         self._window_seconds = seconds
+
+    def enable_y_autoscale(self) -> None:
+        """Enable automatic Y-axis scaling based on data range.
+
+        This is the default behavior. When autoscale is enabled, the Y-axis
+        will automatically adjust to show all data points.
+        """
+        self._y_autoscale = True
+        self._y_range_min = None
+        self._y_range_max = None
+        self._plot_item.enableAutoRange(axis="y")
+
+    def set_y_range(self, y_min: float, y_max: float) -> None:
+        """Set a manual Y-axis range, disabling autoscale.
+
+        The manual range persists across data updates until autoscale is
+        re-enabled via enable_y_autoscale().
+
+        Args:
+            y_min: Minimum Y value to display.
+            y_max: Maximum Y value to display.
+
+        Raises:
+            ValueError: If y_min >= y_max.
+        """
+        if y_min >= y_max:
+            raise ValueError(f"y_min must be less than y_max, got y_min={y_min}, y_max={y_max}")
+        self._y_autoscale = False
+        self._y_range_min = y_min
+        self._y_range_max = y_max
+        self._plot_item.disableAutoRange(axis="y")
+        self._plot_item.setYRange(y_min, y_max, padding=0)
+
+    def is_y_autoscale_enabled(self) -> bool:
+        """Return whether Y-axis autoscale is enabled."""
+        return self._y_autoscale
+
+    def get_y_range(self) -> Optional[Tuple[float, float]]:
+        """Return the current manual Y-axis range, or None if autoscaling.
+
+        Returns:
+            Tuple of (y_min, y_max) if manual range is set, None if autoscaling.
+        """
+        if self._y_autoscale:
+            return None
+        return (self._y_range_min, self._y_range_max)
 
     def start(self) -> None:
         """Start the plot update timer."""
@@ -189,9 +253,7 @@ class SingleChannelPlot(QWidget):
             return
 
         # Calculate how many samples to fetch for the window
-        # Assume 1000Hz sample rate
-        sample_rate = 1000
-        n_samples = int(self._window_seconds * sample_rate)
+        n_samples = int(self._window_seconds * self._sample_rate)
 
         data = self._buffer.get_latest(n_samples)
         if data is None:

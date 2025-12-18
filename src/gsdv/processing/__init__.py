@@ -10,6 +10,7 @@ from gsdv.processing.decimation import (
     VisualizationBuffer,
     VisualizationBufferStats,
 )
+from gsdv.processing.processing_engine import ProcessingEngine, SoftZeroOffsets
 
 __all__ = [
     "RAW_TIER",
@@ -20,4 +21,6 @@ __all__ = [
     "TierStats",
     "VisualizationBuffer",
     "VisualizationBufferStats",
+    "ProcessingEngine",
+    "SoftZeroOffsets",
 ]

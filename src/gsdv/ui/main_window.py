@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from gsdv.config.preferences import UserPreferences
+from gsdv.plot.plot_widget import SingleChannelPlot
 from gsdv.protocols.tcp_cmd import ToolTransform
 from gsdv.ui.settings_dialog import SettingsDialog
 
@@ -72,6 +74,111 @@ class ChannelSelector(QGroupBox):
         """Set the enabled state of a specific channel."""
         if channel in self._checkboxes:
             self._checkboxes[channel].setChecked(enabled)
+
+
+class TimeWindowSelector(QGroupBox):
+    """Widget for selecting the time window for the plot display.
+
+    Provides a dropdown with preset time windows ranging from 1 second
+    to 7 days. Emits window_changed signal when the user selects a
+    different time window.
+
+    Time windows are organized by resolution tier:
+    - Raw buffer (up to 60s): 1s, 5s, 10s, 30s, 60s
+    - Tier1 (up to 1hr): 5m, 15m, 30m, 1h
+    - Tier2 (up to 24hr): 6h, 12h, 24h
+    - Tier3 (up to 7d): 3d, 7d
+    """
+
+    window_changed = Signal(float)
+
+    # Preset time windows: (display_label, seconds)
+    # Minimum 1s, maximum 7 days (604800s)
+    TIME_WINDOWS: tuple[tuple[str, float], ...] = (
+        ("1 sec", 1.0),
+        ("5 sec", 5.0),
+        ("10 sec", 10.0),
+        ("30 sec", 30.0),
+        ("1 min", 60.0),
+        ("5 min", 300.0),
+        ("15 min", 900.0),
+        ("30 min", 1800.0),
+        ("1 hour", 3600.0),
+        ("6 hours", 21600.0),
+        ("12 hours", 43200.0),
+        ("24 hours", 86400.0),
+        ("3 days", 259200.0),
+        ("7 days", 604800.0),
+    )
+
+    DEFAULT_INDEX = 2  # 10 seconds
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("Time Window", parent)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        label = QLabel("Display:")
+        layout.addWidget(label)
+
+        self._combo = QComboBox()
+        self._combo.setMinimumWidth(100)
+        for display_label, _ in self.TIME_WINDOWS:
+            self._combo.addItem(display_label)
+        self._combo.setCurrentIndex(self.DEFAULT_INDEX)
+        self._combo.currentIndexChanged.connect(self._on_index_changed)
+        layout.addWidget(self._combo)
+
+        layout.addStretch()
+
+    def _on_index_changed(self, index: int) -> None:
+        """Handle combo box selection change."""
+        if 0 <= index < len(self.TIME_WINDOWS):
+            _, seconds = self.TIME_WINDOWS[index]
+            self.window_changed.emit(seconds)
+
+    def window_seconds(self) -> float:
+        """Return the currently selected time window in seconds."""
+        index = self._combo.currentIndex()
+        if 0 <= index < len(self.TIME_WINDOWS):
+            return self.TIME_WINDOWS[index][1]
+        return self.TIME_WINDOWS[self.DEFAULT_INDEX][1]
+
+    def set_window_seconds(self, seconds: float) -> None:
+        """Set the time window by value in seconds.
+
+        If the exact value is not in the preset list, selects the
+        closest available window.
+
+        Args:
+            seconds: Time window duration in seconds.
+        """
+        # Find closest match
+        closest_index = 0
+        closest_diff = abs(self.TIME_WINDOWS[0][1] - seconds)
+        for i, (_, window_seconds) in enumerate(self.TIME_WINDOWS):
+            diff = abs(window_seconds - seconds)
+            if diff < closest_diff:
+                closest_diff = diff
+                closest_index = i
+        self._combo.setCurrentIndex(closest_index)
+
+    def set_window_index(self, index: int) -> None:
+        """Set the time window by index.
+
+        Args:
+            index: Index into TIME_WINDOWS list.
+
+        Raises:
+            IndexError: If index is out of range.
+        """
+        if not 0 <= index < len(self.TIME_WINDOWS):
+            raise IndexError(f"Index {index} out of range (0-{len(self.TIME_WINDOWS) - 1})")
+        self._combo.setCurrentIndex(index)
 
 
 def is_valid_ipv4(ip_string: str) -> bool:
@@ -538,12 +645,22 @@ class MainWindow(QMainWindow):
         self._channel_selector = ChannelSelector()
         main_layout.addWidget(self._channel_selector)
 
+        # Time window selector
+        self._time_window_selector = TimeWindowSelector()
+        self._time_window_selector.set_window_seconds(self._preferences.time_window_seconds)
+        self._time_window_selector.window_changed.connect(self._on_time_window_changed)
+        main_layout.addWidget(self._time_window_selector)
+
         # Middle section: plot area and numeric display
         middle_layout = QHBoxLayout()
         middle_layout.setSpacing(8)
 
-        # Plot area (placeholder for now)
-        self._plot_area = PlotAreaPlaceholder()
+        # Plot area
+        self._plot_area = SingleChannelPlot(buffer=None)
+        self._plot_area.set_window_seconds(self._preferences.time_window_seconds)
+        # Default to Fx (force) unit
+        if self._preferences.force_unit:
+            self._plot_area.set_unit(self._preferences.force_unit)
         middle_layout.addWidget(self._plot_area, stretch=3)
 
         # Numeric display on the right
@@ -794,6 +911,15 @@ class MainWindow(QMainWindow):
         """Return the current theme name."""
         return self._current_theme
 
+    def _on_time_window_changed(self, seconds: float) -> None:
+        """Handle time window changes."""
+        self._preferences.time_window_seconds = seconds
+        # Save preferences implicitly? Or wait for close? 
+        # The Store saves on demand. Here we just update the object.
+        # But we should update the plot.
+        if isinstance(self._plot_area, SingleChannelPlot):
+            self._plot_area.set_window_seconds(seconds)
+
     def _on_settings_clicked(self) -> None:
         """Handle settings button click."""
         dialog = SettingsDialog(self._preferences, self)
@@ -852,6 +978,11 @@ class MainWindow(QMainWindow):
     def channel_selector(self) -> ChannelSelector:
         """Return the channel selector widget."""
         return self._channel_selector
+
+    @property
+    def time_window_selector(self) -> TimeWindowSelector:
+        """Return the time window selector widget."""
+        return self._time_window_selector
 
     @property
     def numeric_display(self) -> NumericDisplay:
