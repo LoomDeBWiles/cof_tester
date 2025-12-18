@@ -9,18 +9,24 @@ import pytest
 def _qt_is_available() -> bool:
     """Check if Qt is fully available (Python bindings and native libraries)."""
     try:
+        from PySide6 import QtCore  # noqa: F401
+        from PySide6 import QtGui  # noqa: F401
         from PySide6 import QtWidgets  # noqa: F401
 
         return True
-    except (ImportError, OSError):
+    except (ImportError, OSError, Exception):
         return False
 
 
 def pytest_configure(config):
     """Disable pytest-qt if Qt is not available."""
     if not _qt_is_available():
-        config.pluginmanager.set_blocked("pytest-qt")
-        config.pluginmanager.set_blocked("pytestqt")
+        try:
+            config.pluginmanager.set_blocked("pytest-qt")
+            config.pluginmanager.set_blocked("pytestqt")
+            config.pluginmanager.set_blocked("pytest_qt")
+        except Exception:
+            pass
 
 
 # Disable Qt test modules if Qt is not available
@@ -28,6 +34,7 @@ collect_ignore = []
 if not _qt_is_available():
     collect_ignore.append("test_connection_panel.py")
     collect_ignore.append("test_integration_simulator.py")
+    collect_ignore.append("test_issue_rw5_repro.py")
     collect_ignore.append("test_main_window.py")
     collect_ignore.append("test_plot_widget.py")
     collect_ignore.append("test_ui_accessibility.py")

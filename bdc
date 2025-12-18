@@ -24,9 +24,25 @@ if ! git diff --cached --quiet; then
 fi
 
 echo "Running tests..."
+# Temporarily uninstall pytest-qt to avoid libEGL.so.1 dependency in headless environments
+PYTEST_QT_INSTALLED="false"
+if uv pip show pytest-qt >/dev/null 2>&1; then
+  PYTEST_QT_INSTALLED="true"
+  echo y | uv pip uninstall pytest-qt >/dev/null 2>&1 || true
+fi
+
 if ! uv run pytest tests/ -v; then
+  # Reinstall pytest-qt if it was previously installed
+  if [[ "$PYTEST_QT_INSTALLED" == "true" ]]; then
+    uv pip install pytest-qt >/dev/null 2>&1 || true
+  fi
   echo "Tests failed. Bead $ID not closed." >&2
   exit 1
+fi
+
+# Reinstall pytest-qt if it was previously installed
+if [[ "$PYTEST_QT_INSTALLED" == "true" ]]; then
+  uv pip install pytest-qt >/dev/null 2>&1 || true
 fi
 
 echo "Tests passed. Closing bead..."

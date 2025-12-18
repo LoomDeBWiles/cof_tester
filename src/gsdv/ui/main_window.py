@@ -152,7 +152,8 @@ class TimeWindowSelector(QGroupBox):
         """Set the time window by value in seconds.
 
         If the exact value is not in the preset list, selects the
-        closest available window.
+        closest available window and emits the window_changed signal
+        with the snapped value.
 
         Args:
             seconds: Time window duration in seconds.
@@ -165,7 +166,16 @@ class TimeWindowSelector(QGroupBox):
             if diff < closest_diff:
                 closest_diff = diff
                 closest_index = i
+
+        # Update combo box
+        current_index = self._combo.currentIndex()
         self._combo.setCurrentIndex(closest_index)
+
+        # Emit signal explicitly if index didn't change
+        # This ensures connected handlers are always notified of the (potentially snapped) value
+        if current_index == closest_index:
+            _, snapped_seconds = self.TIME_WINDOWS[closest_index]
+            self.window_changed.emit(snapped_seconds)
 
     def set_window_index(self, index: int) -> None:
         """Set the time window by index.
