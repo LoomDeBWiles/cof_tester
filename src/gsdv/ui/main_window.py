@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from gsdv.config.preferences import UserPreferences
+from gsdv.protocols.tcp_cmd import ToolTransform
 from gsdv.ui.settings_dialog import SettingsDialog
 
 if TYPE_CHECKING:
@@ -475,6 +476,7 @@ class MainWindow(QMainWindow):
     theme_changed = Signal(str)
     bias_requested = Signal()
     display_settings_changed = Signal()  # Emitted when unit or filter settings change
+    transform_requested = Signal(ToolTransform)  # Emitted when transform settings change
 
     def __init__(
         self,
@@ -800,11 +802,22 @@ class MainWindow(QMainWindow):
         - Theme changes are applied immediately
         - Unit preference changes affect how values are displayed
         - Filter settings are stored for use by the processing pipeline
+        - Transform settings are sent to the sensor (if connected)
         """
         # Apply theme if changed
         self.set_theme(self._preferences.theme)
         # Notify listeners that display settings (units, filtering) have changed
         self.display_settings_changed.emit()
+        # Emit transform with current values from preferences
+        transform = ToolTransform(
+            dx=self._preferences.transform_dx,
+            dy=self._preferences.transform_dy,
+            dz=self._preferences.transform_dz,
+            rx=self._preferences.transform_rx,
+            ry=self._preferences.transform_ry,
+            rz=self._preferences.transform_rz,
+        )
+        self.transform_requested.emit(transform)
 
     def _on_connect_shortcut(self) -> None:
         """Handle Ctrl+Enter shortcut for connect."""
@@ -889,3 +902,15 @@ class MainWindow(QMainWindow):
     def filter_cutoff_hz(self) -> float:
         """Return the filter cutoff frequency in Hz."""
         return self._preferences.filter_cutoff_hz
+
+    @property
+    def current_transform(self) -> ToolTransform:
+        """Return the current tool transform from preferences."""
+        return ToolTransform(
+            dx=self._preferences.transform_dx,
+            dy=self._preferences.transform_dy,
+            dz=self._preferences.transform_dz,
+            rx=self._preferences.transform_rx,
+            ry=self._preferences.transform_ry,
+            rz=self._preferences.transform_rz,
+        )

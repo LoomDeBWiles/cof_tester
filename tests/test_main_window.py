@@ -8,6 +8,8 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 
+from gsdv.config.preferences import UserPreferences
+from gsdv.protocols.tcp_cmd import ToolTransform
 from gsdv.ui import MainWindow
 
 
@@ -234,3 +236,49 @@ class TestMainWindowTheme:
         """Theme constants match expected string values."""
         assert MainWindow.DARK_THEME == "dark"
         assert MainWindow.LIGHT_THEME == "light"
+
+
+class TestMainWindowTransform:
+    """Tests for FR-27: Tool transform UI and signal."""
+
+    def test_current_transform_returns_default_values(self, main_window):
+        """current_transform returns ToolTransform with default zero values."""
+        transform = main_window.current_transform
+        assert isinstance(transform, ToolTransform)
+        assert transform.dx == 0.0
+        assert transform.dy == 0.0
+        assert transform.dz == 0.0
+        assert transform.rx == 0.0
+        assert transform.ry == 0.0
+        assert transform.rz == 0.0
+
+    def test_current_transform_reflects_preferences(self, qtbot):
+        """current_transform returns values from preferences."""
+        prefs = UserPreferences(
+            transform_dx=10.5,
+            transform_dy=20.0,
+            transform_dz=-5.0,
+            transform_rx=1.5,
+            transform_ry=2.5,
+            transform_rz=3.5,
+        )
+        window = MainWindow(preferences=prefs)
+        qtbot.addWidget(window)
+
+        transform = window.current_transform
+        assert transform.dx == 10.5
+        assert transform.dy == 20.0
+        assert transform.dz == -5.0
+        assert transform.rx == 1.5
+        assert transform.ry == 2.5
+        assert transform.rz == 3.5
+
+    def test_transform_requested_signal_exists(self, main_window):
+        """MainWindow has transform_requested signal."""
+        assert hasattr(main_window, "transform_requested")
+
+    def test_transform_requested_signal_can_be_connected(self, main_window):
+        """transform_requested signal can be connected to a slot."""
+        received = []
+        main_window.transform_requested.connect(lambda t: received.append(t))
+        # No assertion needed - test passes if connection doesn't raise
