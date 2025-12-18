@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from gsdv.logging.filename import sanitize_prefix
 from gsdv.models import CalibrationInfo
 from gsdv.protocols.http_calibration import (
     HttpCalibrationClient,
@@ -136,7 +137,7 @@ def cmd_log(args: argparse.Namespace) -> int:
     output_dir = Path(args.out)
     seconds = args.seconds
     format_type = args.format
-    prefix = args.prefix or ""
+    prefix = sanitize_prefix(args.prefix or "")
     udp_port = args.udp_port
     http_port = args.http_port
 
@@ -262,7 +263,16 @@ def cmd_simulate_sensor(args: argparse.Namespace) -> int:
     """Run the sensor simulator."""
     import time
 
-    from gsdv.diagnostics.sensor_simulator import SensorSimulator, SimulatorConfig
+    from gsdv.diagnostics.sensor_simulator import (
+        FaultConfig,
+        SensorSimulator,
+        SimulatorConfig,
+    )
+
+    fault_config = FaultConfig(
+        loss_probability=args.loss,
+        reorder_probability=args.reorder,
+    )
 
     config = SimulatorConfig(
         udp_port=args.udp_port,
@@ -270,13 +280,18 @@ def cmd_simulate_sensor(args: argparse.Namespace) -> int:
         http_port=args.http_port,
         sample_rate_hz=args.rate,
         seed=args.seed,
+        faults=fault_config,
     )
 
     print("Starting sensor simulator...")
-    print(f"  UDP RDT port:    {config.udp_port}")
+    print(f"  UDP RDT port:     {config.udp_port}")
     print(f"  TCP command port: {config.tcp_port}")
     print(f"  HTTP port:        {config.http_port}")
     print(f"  Sample rate:      {config.sample_rate_hz} Hz")
+    if args.loss > 0:
+        print(f"  Packet loss:      {args.loss:.0%}")
+    if args.reorder > 0:
+        print(f"  Packet reorder:   {args.reorder:.0%}")
     print()
     print("Press Ctrl+C to stop.")
 
@@ -412,6 +427,8 @@ def main() -> int:
     sim_parser.add_argument("--http-port", type=int, default=8080, help="HTTP calibration port")
     sim_parser.add_argument("--rate", type=int, default=1000, help="Sample rate in Hz")
     sim_parser.add_argument("--seed", type=int, default=None, help="Random seed for deterministic output")
+    sim_parser.add_argument("--loss", type=float, default=0.0, help="Packet loss probability (0.0-1.0)")
+    sim_parser.add_argument("--reorder", type=float, default=0.0, help="Packet reorder probability (0.0-1.0)")
     sim_parser.set_defaults(func=cmd_simulate_sensor)
 
     args = parser.parse_args()

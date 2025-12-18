@@ -4,21 +4,22 @@ This module provides a simulated ATI NETrs sensor that implements:
 - UDP RDT streaming at configurable rates
 - TCP command interface (READCALINFO, WRITETRANSFORM, bias)
 - HTTP calibration endpoint (/netftapi2.xml)
+- Fault injection for testing error handling (loss, reorder, burst, disconnect)
 
 The simulator can run standalone for manual testing or as a pytest fixture
 for automated integration tests.
 """
 
 import argparse
+import collections
 import math
 import socket
 import struct
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -36,6 +37,29 @@ from gsdv.protocols.tcp_cmd import (
     TCP_RESPONSE_HEADER,
     TcpCommand,
 )
+
+
+@dataclass
+class FaultConfig:
+    """Configuration for fault injection in the simulator.
+
+    All probabilities are per-packet and should be in range [0.0, 1.0].
+    """
+
+    # Packet loss
+    loss_probability: float = 0.0
+
+    # Packet reordering
+    reorder_probability: float = 0.0
+    reorder_delay_packets: int = 2
+
+    # Burst loss (multiple consecutive packets dropped)
+    burst_loss_probability: float = 0.0
+    burst_loss_length: int = 3
+
+    # Forced disconnects (temporary stop of packet flow)
+    disconnect_probability: float = 0.0
+    disconnect_duration_ms: int = 100
 
 
 @dataclass
@@ -64,6 +88,9 @@ class SimulatorConfig:
     signal_frequency_hz: float = 1.0
     noise_stddev: int = 1000
 
+    # Fault injection
+    faults: FaultConfig = field(default_factory=FaultConfig)
+
 
 @dataclass
 class SimulatorState:
@@ -75,6 +102,10 @@ class SimulatorState:
     ft_sequence: int = 0
     bias_offset: np.ndarray = field(default_factory=lambda: np.zeros(6, dtype=np.int32))
     running: bool = True
+
+    # Fault injection state
+    burst_loss_remaining: int = 0
+    disconnect_until: float = 0.0
 
 
 class SensorSimulator:
@@ -110,6 +141,9 @@ class SensorSimulator:
         self._streaming_thread: Optional[threading.Thread] = None
 
         self._start_time = time.monotonic()
+
+        # Reorder buffer for out-of-order packet simulation
+        self._reorder_buffer: collections.deque[bytes] = collections.deque()
 
     def _generate_sample(self) -> np.ndarray:
         """Generate a simulated sensor sample.
@@ -156,24 +190,95 @@ class SensorSimulator:
             counts[3], counts[4], counts[5],
         )
 
+    def _should_drop_packet(self) -> bool:
+        """Determine if the current packet should be dropped due to faults.
+
+        Returns:
+            True if the packet should be dropped, False if it should be sent.
+        """
+        faults = self.config.faults
+
+        # Check if in burst loss
+        if self.state.burst_loss_remaining > 0:
+            self.state.burst_loss_remaining -= 1
+            return True
+
+        # Check for new burst loss
+        if faults.burst_loss_probability > 0:
+            if self._rng.random() < faults.burst_loss_probability:
+                self.state.burst_loss_remaining = faults.burst_loss_length - 1
+                return True
+
+        # Check for single packet loss
+        if faults.loss_probability > 0:
+            if self._rng.random() < faults.loss_probability:
+                return True
+
+        return False
+
+    def _send_packet(self, response: bytes) -> None:
+        """Send a packet, possibly with reordering.
+
+        Args:
+            response: The packet data to send.
+        """
+        if self._udp_socket is None or self.state.streaming_client is None:
+            return
+
+        faults = self.config.faults
+
+        # Check for reordering
+        if faults.reorder_probability > 0 and self._rng.random() < faults.reorder_probability:
+            # Buffer this packet for delayed sending
+            self._reorder_buffer.append(response)
+            if len(self._reorder_buffer) >= faults.reorder_delay_packets:
+                # Send the oldest buffered packet instead
+                response = self._reorder_buffer.popleft()
+        elif self._reorder_buffer:
+            # Randomly flush a buffered packet
+            response = self._reorder_buffer.popleft()
+
+        try:
+            self._udp_socket.sendto(response, self.state.streaming_client)
+        except OSError:
+            pass
+
     def _streaming_loop(self) -> None:
         """Main streaming loop - sends RDT packets at configured rate."""
         interval = 1.0 / self.config.sample_rate_hz
         next_send = time.monotonic()
+        faults = self.config.faults
 
         while self.state.running and self.state.streaming:
             now = time.monotonic()
+
+            # Check for disconnect fault
+            if self.state.disconnect_until > 0:
+                if now < self.state.disconnect_until:
+                    # Still disconnected, skip packet generation
+                    next_send = now + interval
+                    time.sleep(max(0, interval * 0.9))
+                    continue
+                else:
+                    # Disconnect period ended
+                    self.state.disconnect_until = 0.0
+
             if now >= next_send:
                 if self.state.streaming_client and self._udp_socket:
                     counts = self._generate_sample()
                     response = self._build_rdt_response(counts)
-                    try:
-                        self._udp_socket.sendto(response, self.state.streaming_client)
-                    except OSError:
-                        pass
+
+                    # Apply fault injection
+                    if not self._should_drop_packet():
+                        self._send_packet(response)
 
                     self.state.rdt_sequence = (self.state.rdt_sequence + 1) & 0xFFFFFFFF
                     self.state.ft_sequence = (self.state.ft_sequence + 1) & 0xFFFFFFFF
+
+                    # Check for new disconnect fault
+                    if faults.disconnect_probability > 0:
+                        if self._rng.random() < faults.disconnect_probability:
+                            self.state.disconnect_until = now + faults.disconnect_duration_ms / 1000.0
 
                 next_send += interval
                 if next_send < now:
@@ -401,7 +506,26 @@ def main() -> None:
     parser.add_argument("--cpf", type=int, default=1000000, help="Counts per force")
     parser.add_argument("--cpt", type=int, default=1000000, help="Counts per torque")
 
+    # Fault injection arguments
+    parser.add_argument("--loss", type=float, default=0.0, help="Packet loss probability (0.0-1.0)")
+    parser.add_argument("--reorder", type=float, default=0.0, help="Packet reorder probability (0.0-1.0)")
+    parser.add_argument("--reorder-delay", type=int, default=2, help="Reorder delay in packets")
+    parser.add_argument("--burst-loss", type=float, default=0.0, help="Burst loss probability (0.0-1.0)")
+    parser.add_argument("--burst-length", type=int, default=3, help="Burst loss length in packets")
+    parser.add_argument("--disconnect", type=float, default=0.0, help="Disconnect probability (0.0-1.0)")
+    parser.add_argument("--disconnect-ms", type=int, default=100, help="Disconnect duration in milliseconds")
+
     args = parser.parse_args()
+
+    fault_config = FaultConfig(
+        loss_probability=args.loss,
+        reorder_probability=args.reorder,
+        reorder_delay_packets=args.reorder_delay,
+        burst_loss_probability=args.burst_loss,
+        burst_loss_length=args.burst_length,
+        disconnect_probability=args.disconnect,
+        disconnect_duration_ms=args.disconnect_ms,
+    )
 
     config = SimulatorConfig(
         udp_port=args.udp_port,
@@ -411,13 +535,24 @@ def main() -> None:
         seed=args.seed,
         counts_per_force=args.cpf,
         counts_per_torque=args.cpt,
+        faults=fault_config,
     )
 
-    print(f"Starting sensor simulator...")
-    print(f"  UDP RDT port:    {config.udp_port}")
+    print("Starting sensor simulator...")
+    print(f"  UDP RDT port:     {config.udp_port}")
     print(f"  TCP command port: {config.tcp_port}")
     print(f"  HTTP port:        {config.http_port}")
     print(f"  Sample rate:      {config.sample_rate_hz} Hz")
+    if any([args.loss, args.reorder, args.burst_loss, args.disconnect]):
+        print("  Faults enabled:")
+        if args.loss > 0:
+            print(f"    Loss:       {args.loss:.0%}")
+        if args.reorder > 0:
+            print(f"    Reorder:    {args.reorder:.0%} ({args.reorder_delay} packets)")
+        if args.burst_loss > 0:
+            print(f"    Burst loss: {args.burst_loss:.0%} ({args.burst_length} packets)")
+        if args.disconnect > 0:
+            print(f"    Disconnect: {args.disconnect:.0%} ({args.disconnect_ms}ms)")
     print()
     print("Press Ctrl+C to stop.")
 
