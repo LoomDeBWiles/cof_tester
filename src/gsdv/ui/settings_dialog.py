@@ -378,20 +378,20 @@ class AdvancedTab(QWidget):
         translation_layout.setContentsMargins(0, 0, 0, 0)
 
         self._transform_dx = QDoubleSpinBox()
-        self._transform_dx.setRange(-10000.0, 10000.0)
-        self._transform_dx.setDecimals(3)
+        self._transform_dx.setRange(-327.67, 327.67)
+        self._transform_dx.setDecimals(2)
         self._transform_dx.setPrefix("dX: ")
         translation_layout.addWidget(self._transform_dx)
 
         self._transform_dy = QDoubleSpinBox()
-        self._transform_dy.setRange(-10000.0, 10000.0)
-        self._transform_dy.setDecimals(3)
+        self._transform_dy.setRange(-327.67, 327.67)
+        self._transform_dy.setDecimals(2)
         self._transform_dy.setPrefix("dY: ")
         translation_layout.addWidget(self._transform_dy)
 
         self._transform_dz = QDoubleSpinBox()
-        self._transform_dz.setRange(-10000.0, 10000.0)
-        self._transform_dz.setDecimals(3)
+        self._transform_dz.setRange(-327.67, 327.67)
+        self._transform_dz.setDecimals(2)
         self._transform_dz.setPrefix("dZ: ")
         translation_layout.addWidget(self._transform_dz)
 
@@ -404,20 +404,20 @@ class AdvancedTab(QWidget):
         rotation_layout.setContentsMargins(0, 0, 0, 0)
 
         self._transform_rx = QDoubleSpinBox()
-        self._transform_rx.setRange(-360.0, 360.0)
-        self._transform_rx.setDecimals(3)
+        self._transform_rx.setRange(-327.67, 327.67)
+        self._transform_rx.setDecimals(2)
         self._transform_rx.setPrefix("rX: ")
         rotation_layout.addWidget(self._transform_rx)
 
         self._transform_ry = QDoubleSpinBox()
-        self._transform_ry.setRange(-360.0, 360.0)
-        self._transform_ry.setDecimals(3)
+        self._transform_ry.setRange(-327.67, 327.67)
+        self._transform_ry.setDecimals(2)
         self._transform_ry.setPrefix("rY: ")
         rotation_layout.addWidget(self._transform_ry)
 
         self._transform_rz = QDoubleSpinBox()
-        self._transform_rz.setRange(-360.0, 360.0)
-        self._transform_rz.setDecimals(3)
+        self._transform_rz.setRange(-327.67, 327.67)
+        self._transform_rz.setDecimals(2)
         self._transform_rz.setPrefix("rZ: ")
         rotation_layout.addWidget(self._transform_rz)
 
