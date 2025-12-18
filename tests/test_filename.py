@@ -10,6 +10,7 @@ from gsdv.logging.filename import (
     generate_filepath,
     is_valid_prefix,
     preview_filename,
+    sanitize_extension,
     sanitize_prefix,
 )
 
@@ -57,6 +58,44 @@ class TestSanitizePrefix:
     def test_removes_spaces_in_middle(self) -> None:
         assert sanitize_prefix("a b") == "ab"
         assert sanitize_prefix("my data file") == "mydatafile"
+
+
+class TestSanitizeExtension:
+    """Tests for extension sanitization and path traversal prevention."""
+
+    def test_simple_extension_unchanged(self) -> None:
+        assert sanitize_extension("csv") == "csv"
+        assert sanitize_extension("tsv") == "tsv"
+        assert sanitize_extension("json") == "json"
+
+    def test_strips_leading_dot(self) -> None:
+        assert sanitize_extension(".csv") == "csv"
+
+    def test_strips_multiple_leading_dots(self) -> None:
+        assert sanitize_extension("...csv") == "csv"
+
+    def test_path_traversal_attack_sanitized(self) -> None:
+        # Core security test: path traversal via extension must be blocked
+        assert sanitize_extension("../../../../tmp/evil") == "tmpevil"
+        assert sanitize_extension("../../../etc/passwd") == "etcpasswd"
+        assert sanitize_extension("..\\..\\windows\\system32") == "windowssystem32"
+
+    def test_removes_slashes(self) -> None:
+        assert sanitize_extension("path/to/file") == "pathtofile"
+        assert sanitize_extension("path\\to\\file") == "pathtofile"
+
+    def test_removes_special_characters(self) -> None:
+        assert sanitize_extension("csv!@#$%") == "csv"
+        assert sanitize_extension("a.b.c") == "abc"
+
+    def test_empty_extension_returns_empty(self) -> None:
+        assert sanitize_extension("") == ""
+        assert sanitize_extension(".") == ""
+        assert sanitize_extension("...") == ""
+
+    def test_only_special_chars_returns_empty(self) -> None:
+        assert sanitize_extension("/../") == ""
+        assert sanitize_extension("...///") == ""
 
 
 class TestIsValidPrefix:
@@ -175,6 +214,19 @@ class TestGenerateFilepath:
             "/data/output", "csv", prefix="test", timestamp=ts
         )
         assert result == Path("/data/output/test_20251218_143045.csv")
+
+
+class TestGenerateFilepathSecurity:
+    """Security tests for filepath generation."""
+
+    def test_path_traversal_via_extension_blocked(self) -> None:
+        """Verify that path traversal attacks via extension are blocked."""
+        ts = datetime(2025, 12, 18, 14, 30, 45, tzinfo=timezone.utc)
+        result = generate_filepath("/data/output", "../../../../tmp/evil", timestamp=ts)
+        # Extension should be sanitized to "tmpevil", not allow traversal
+        assert result == Path("/data/output/20251218_143045.tmpevil")
+        # The path should stay within the output directory
+        assert str(result).startswith("/data/output/")
 
 
 class TestPreviewFilename:
