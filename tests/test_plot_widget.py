@@ -2,10 +2,11 @@
 
 import numpy as np
 import pytest
-import pyqtgraph as pg
 
 # Skip entire module if Qt is not available
 pytest.importorskip("PySide6")
+
+import pyqtgraph as pg
 
 try:
     import PySide6.QtGui

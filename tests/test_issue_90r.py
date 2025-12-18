@@ -48,7 +48,9 @@ def test_cmd_log_sanitizes_prefix(tmp_path, mock_dependencies):
         seconds=None,
         prefix="../traversal/",
         udp_port=49152,
-        http_port=80
+        http_port=80,
+        rotate_size=None,
+        rotate_time=None,
     )
     
     # Run cmd_log
@@ -91,7 +93,9 @@ def test_cmd_log_absolute_path_prefix(tmp_path, mock_dependencies):
         seconds=None,
         prefix="/etc/passwd",
         udp_port=49152,
-        http_port=80
+        http_port=80,
+        rotate_size=None,
+        rotate_time=None,
     )
     
     # Run cmd_log

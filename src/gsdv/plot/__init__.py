@@ -1,5 +1,5 @@
 """Plotting components using pyqtgraph."""
 
-from gsdv.plot.plot_widget import SingleChannelPlot
+from gsdv.plot.plot_widget import MultiChannelPlot
 
-__all__ = ["SingleChannelPlot"]
+__all__ = ["MultiChannelPlot"]

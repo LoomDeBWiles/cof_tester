@@ -319,9 +319,9 @@ class AsyncFileWriter:
         if self._header:
             self._file.write(self._header)
             self._current_file_bytes += len(self._header)
-            if not self._header.endswith("\n"):
-                self._file.write("\n")
-                self._current_file_bytes += 1
+            if not self._header.endswith(self._line_terminator):
+                self._file.write(self._line_terminator)
+                self._current_file_bytes += len(self._line_terminator)
 
     def _rotate_file(self) -> None:
         """Close current file and open next part."""
