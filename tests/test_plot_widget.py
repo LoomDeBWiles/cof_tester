@@ -280,3 +280,57 @@ class TestMultiChannelPlotTimestampConversion:
 
         assert len(result) == 3
         assert result[2] == pytest.approx(0.0)
+
+
+class TestMultiChannelPlotGridAndCrosshair:
+    """Tests for grid and crosshair functionality."""
+
+    def test_grid_enabled_by_default(self, qtbot):
+        """Grid is enabled by default."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        assert widget.is_grid_enabled()
+
+    def test_set_grid_enabled_toggles_state(self, qtbot):
+        """set_grid_enabled toggles grid visibility."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+
+        widget.set_grid_enabled(False)
+        assert not widget.is_grid_enabled()
+
+        widget.set_grid_enabled(True)
+        assert widget.is_grid_enabled()
+
+    def test_crosshair_disabled_by_default(self, qtbot):
+        """Crosshair is disabled by default."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+        assert not widget.is_crosshair_enabled()
+        assert not widget._vline.isVisible()
+        assert not widget._hline.isVisible()
+
+    def test_set_crosshair_enabled_toggles_state(self, qtbot):
+        """set_crosshair_enabled toggles crosshair state."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+
+        widget.set_crosshair_enabled(True)
+        assert widget.is_crosshair_enabled()
+
+        widget.set_crosshair_enabled(False)
+        assert not widget.is_crosshair_enabled()
+        assert not widget._vline.isVisible()
+        assert not widget._hline.isVisible()
+
+    def test_crosshair_disables_lines_when_disabled(self, qtbot):
+        """Disabling crosshair hides the lines."""
+        widget = MultiChannelPlot()
+        qtbot.addWidget(widget)
+
+        widget.set_crosshair_enabled(True)
+        widget.set_crosshair_enabled(False)
+
+        assert not widget._vline.isVisible()
+        assert not widget._hline.isVisible()
+        assert not widget._coord_label.isVisible()

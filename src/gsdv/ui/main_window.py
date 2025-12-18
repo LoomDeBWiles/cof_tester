@@ -1010,6 +1010,11 @@ class MainWindow(QMainWindow):
         return self._time_window_selector
 
     @property
+    def plot_controls(self) -> PlotControls:
+        """Return the plot controls widget."""
+        return self._plot_controls
+
+    @property
     def numeric_display(self) -> NumericDisplay:
         """Return the numeric display widget."""
         return self._numeric_display
