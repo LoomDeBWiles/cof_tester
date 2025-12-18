@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from gsdv.logging.filename import sanitize_prefix
+from gsdv.logging.writer import AsyncFileWriter
 from gsdv.models import CalibrationInfo
 from gsdv.protocols.http_calibration import (
     HttpCalibrationClient,
@@ -26,6 +27,46 @@ from gsdv.protocols.http_calibration import (
 )
 from gsdv.protocols.rdt_udp import RdtClient
 from gsdv.protocols.tcp_cmd import TcpCommandClient
+
+
+def parse_size(s: str | None) -> int | None:
+    """Parse size string (e.g. '10MB', '2GB') to bytes."""
+    if not s:
+        return None
+    s = s.strip().upper()
+    try:
+        if s.endswith("GB"):
+            return int(float(s[:-2]) * 1024**3)
+        if s.endswith("MB"):
+            return int(float(s[:-2]) * 1024**2)
+        if s.endswith("KB"):
+            return int(float(s[:-2]) * 1024)
+        if s.endswith("B"):
+            return int(float(s[:-1]))
+        return int(s)
+    except ValueError:
+        print(f"Warning: Invalid size format '{s}', ignoring.", file=sys.stderr)
+        return None
+
+
+def parse_duration(s: str | None) -> float | None:
+    """Parse duration string (e.g. '60m', '1h') to seconds."""
+    if not s:
+        return None
+    s = s.strip().lower()
+    try:
+        if s.endswith("min"):
+            return float(s[:-3]) * 60
+        if s.endswith("m"):
+            return float(s[:-1]) * 60
+        if s.endswith("h"):
+            return float(s[:-1]) * 3600
+        if s.endswith("s"):
+            return float(s[:-1])
+        return float(s)
+    except ValueError:
+        print(f"Warning: Invalid duration format '{s}', ignoring.", file=sys.stderr)
+        return None
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -140,6 +181,9 @@ def cmd_log(args: argparse.Namespace) -> int:
     prefix = sanitize_prefix(args.prefix or "")
     udp_port = args.udp_port
     http_port = args.http_port
+    
+    rotate_size = parse_size(args.rotate_size)
+    rotate_time = parse_duration(args.rotate_time)
 
     # Validate output directory
     if not output_dir.exists():
@@ -172,90 +216,115 @@ def cmd_log(args: argparse.Namespace) -> int:
     output_path = output_dir / filename
 
     print(f"Logging to: {output_path}")
+    if rotate_size:
+        print(f"Rotation size: {args.rotate_size}")
+    if rotate_time:
+        print(f"Rotation time: {args.rotate_time}")
     print()
 
-    # Open file and start streaming
+    # Define formatter closure
+    def log_formatter(record: tuple) -> str:
+        # record is (timestamp_iso, sample_obj)
+        ts_iso, sample = record
+        force_N, torque_Nm = cal.convert_counts_to_si(sample.counts)
+        
+        # Match previous format
+        row = [
+            ts_iso,
+            str(sample.t_monotonic_ns),
+            str(sample.rdt_sequence),
+            str(sample.ft_sequence),
+            str(sample.status),
+            f"{force_N[0]:.6f}",
+            f"{force_N[1]:.6f}",
+            f"{force_N[2]:.6f}",
+            f"{torque_Nm[0]:.9f}",
+            f"{torque_Nm[1]:.9f}",
+            f"{torque_Nm[2]:.9f}",
+        ]
+        return delimiter.join(row)
+
+    # Build header
+    header_lines = []
+    # Add BOM for Excel compatibility
+    if format_type == "excel_compatible":
+        header_lines.append("\ufeff")
+
+    header_lines.extend([
+        f"# Sensor: {ip}",
+        f"# Serial: {cal.serial_number or 'N/A'}",
+        f"# Firmware: {cal.firmware_version or 'N/A'}",
+        f"# CPF: {cal.counts_per_force}",
+        f"# CPT: {cal.counts_per_torque}",
+        f"# Start: {datetime.now().isoformat()}",
+    ])
+    
+    col_headers = [
+        "timestamp_utc",
+        "t_monotonic_ns",
+        "rdt_sequence",
+        "ft_sequence",
+        "status",
+        "Fx [N]",
+        "Fy [N]",
+        "Fz [N]",
+        "Tx [N-m]",
+        "Ty [N-m]",
+        "Tz [N-m]",
+    ]
+    header_lines.append(delimiter.join(col_headers))
+    full_header = "\n".join(header_lines) + "\n"
+
     start_time = time.monotonic()
     sample_count = 0
 
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        # Add BOM for Excel compatibility
-        if format_type == "excel_compatible":
-            f.write("\ufeff")
+    try:
+        with AsyncFileWriter(
+            output_path,
+            formatter=log_formatter,
+            header=full_header,
+            rotate_size_bytes=rotate_size,
+            rotate_interval_s=rotate_time,
+        ) as writer:
+            
+            with RdtClient(ip, port=udp_port) as client:
+                client.start_streaming()
 
-        writer = csv.writer(f, delimiter=delimiter)
-
-        # Write metadata header
-        f.write(f"# Sensor: {ip}\n")
-        f.write(f"# Serial: {cal.serial_number or 'N/A'}\n")
-        f.write(f"# Firmware: {cal.firmware_version or 'N/A'}\n")
-        f.write(f"# CPF: {cal.counts_per_force}\n")
-        f.write(f"# CPT: {cal.counts_per_torque}\n")
-        f.write(f"# Start: {datetime.now().isoformat()}\n")
-
-        # Write header row
-        writer.writerow([
-            "timestamp_utc",
-            "t_monotonic_ns",
-            "rdt_sequence",
-            "ft_sequence",
-            "status",
-            "Fx [N]",
-            "Fy [N]",
-            "Fz [N]",
-            "Tx [N-m]",
-            "Ty [N-m]",
-            "Tz [N-m]",
-        ])
-
-        with RdtClient(ip, port=udp_port) as client:
-            client.start_streaming()
-
-            try:
                 for sample in client.receive_samples(timeout=0.5):
-                    force_N, torque_Nm = cal.convert_counts_to_si(sample.counts)
-
-                    writer.writerow([
-                        datetime.utcnow().isoformat(),
-                        sample.t_monotonic_ns,
-                        sample.rdt_sequence,
-                        sample.ft_sequence,
-                        sample.status,
-                        f"{force_N[0]:.6f}",
-                        f"{force_N[1]:.6f}",
-                        f"{force_N[2]:.6f}",
-                        f"{torque_Nm[0]:.9f}",
-                        f"{torque_Nm[1]:.9f}",
-                        f"{torque_Nm[2]:.9f}",
-                    ])
-
+                    # Capture time for logging
+                    ts_iso = datetime.utcnow().isoformat()
+                    
+                    writer.write((ts_iso, sample))
                     sample_count += 1
 
                     # Progress update every 1000 samples
                     if sample_count % 1000 == 0:
                         elapsed = time.monotonic() - start_time
                         rate = sample_count / elapsed if elapsed > 0 else 0
-                        print(f"\rSamples: {sample_count}, Rate: {rate:.1f} Hz", end="", flush=True)
+                        stats = writer.stats()
+                        drops = stats.samples_dropped
+                        print(f"\rSamples: {sample_count}, Rate: {rate:.1f} Hz, Drops: {drops}", end="", flush=True)
 
                     if seconds is not None and (time.monotonic() - start_time) >= seconds:
                         break
 
-            except KeyboardInterrupt:
-                print()
+    except KeyboardInterrupt:
+        print()
+    
+    # RdtClient context manager handles stop
+    # AsyncFileWriter context manager handles flush/close
 
     elapsed = time.monotonic() - start_time
-    stats = client.statistics
     sample_rate = sample_count / elapsed if elapsed > 0 else 0
-    file_size = output_path.stat().st_size
+    # Note: File size is tricky with rotation as there are multiple files.
+    # We can skip printing final file size or sum them up if we want, but keeping it simple.
 
     print()
     print(f"Logging complete.")
     print(f"  Samples: {sample_count}")
     print(f"  Duration: {elapsed:.2f}s")
     print(f"  Sample rate: {sample_rate:.1f} Hz")
-    print(f"  Packets lost: {stats.packets_lost}")
-    print(f"  File size: {file_size / 1024:.1f} KB")
-
+    
     return 0
 
 
@@ -413,6 +482,14 @@ def main() -> int:
         type=int,
         default=80,
         help="HTTP calibration port",
+    )
+    log_parser.add_argument(
+        "--rotate-size",
+        help="Rotate log after size (e.g. 2GB, 100MB)",
+    )
+    log_parser.add_argument(
+        "--rotate-time",
+        help="Rotate log after duration (e.g. 1h, 60m)",
     )
     log_parser.set_defaults(func=cmd_log)
 

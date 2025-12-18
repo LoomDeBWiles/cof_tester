@@ -1,4 +1,4 @@
-"""Main application window."""
+"Main application window."
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from gsdv.config.preferences import UserPreferences
-from gsdv.plot.plot_widget import SingleChannelPlot
+from gsdv.plot.plot_widget import MultiChannelPlot
 from gsdv.protocols.tcp_cmd import ToolTransform
 from gsdv.ui.settings_dialog import SettingsDialog
 
@@ -57,7 +57,7 @@ class ChannelSelector(QGroupBox):
 
         for channel in self.CHANNELS:
             checkbox = QCheckBox(channel)
-            checkbox.setChecked(channel in ("Fx", "Fy", "Fz"))
+            checkbox.setChecked(True) # Default all visible
             checkbox.toggled.connect(
                 lambda checked, ch=channel: self.channel_toggled.emit(ch, checked)
             )
@@ -656,11 +656,13 @@ class MainWindow(QMainWindow):
         middle_layout.setSpacing(8)
 
         # Plot area
-        self._plot_area = SingleChannelPlot(buffer=None)
+        self._plot_area = MultiChannelPlot(buffer=None)
         self._plot_area.set_window_seconds(self._preferences.time_window_seconds)
-        # Default to Fx (force) unit
-        if self._preferences.force_unit:
-            self._plot_area.set_unit(self._preferences.force_unit)
+        self._plot_area.set_units(self._preferences.force_unit, self._preferences.torque_unit)
+        
+        # Connect channel selector
+        self._channel_selector.channel_toggled.connect(self._plot_area.set_channel_visible)
+
         middle_layout.addWidget(self._plot_area, stretch=3)
 
         # Numeric display on the right
@@ -719,7 +721,7 @@ class MainWindow(QMainWindow):
         bias_action.triggered.connect(self._on_bias_shortcut)
         self.addAction(bias_action)
 
-        # Settings: Ctrl+,
+        # Settings: Ctrl+, 
         settings_action = QAction("Settings", self)
         settings_action.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_Comma))
         settings_action.triggered.connect(self._on_settings_clicked)
@@ -914,11 +916,7 @@ class MainWindow(QMainWindow):
     def _on_time_window_changed(self, seconds: float) -> None:
         """Handle time window changes."""
         self._preferences.time_window_seconds = seconds
-        # Save preferences implicitly? Or wait for close? 
-        # The Store saves on demand. Here we just update the object.
-        # But we should update the plot.
-        if isinstance(self._plot_area, SingleChannelPlot):
-            self._plot_area.set_window_seconds(seconds)
+        self._plot_area.set_window_seconds(seconds)
 
     def _on_settings_clicked(self) -> None:
         """Handle settings button click."""
@@ -937,6 +935,8 @@ class MainWindow(QMainWindow):
         """
         # Apply theme if changed
         self.set_theme(self._preferences.theme)
+        # Apply units to plot
+        self._plot_area.set_units(self._preferences.force_unit, self._preferences.torque_unit)
         # Notify listeners that display settings (units, filtering) have changed
         self.display_settings_changed.emit()
         # Emit transform with current values from preferences
@@ -949,6 +949,15 @@ class MainWindow(QMainWindow):
             rz=self._preferences.transform_rz,
         )
         self.transform_requested.emit(transform)
+        
+    def update_calibration(self, calibration: CalibrationInfo) -> None:
+        """Update calibration info in UI widgets.
+
+        Args:
+            calibration: CalibrationInfo object containing sensor data.
+        """
+        self._sensor_info.update_info(calibration)
+        self._plot_area.set_calibration(calibration.counts_per_force, calibration.counts_per_torque)
 
     def _on_connect_shortcut(self) -> None:
         """Handle Ctrl+Enter shortcut for connect."""

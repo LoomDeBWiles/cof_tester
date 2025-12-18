@@ -12,6 +12,11 @@ import pytest
 # Skip entire module if Qt is not available (handled by conftest.py collect_ignore)
 pytest.importorskip("PySide6")
 
+try:
+    import PySide6.QtGui
+except ImportError:
+    pytest.skip("PySide6 not usable", allow_module_level=True)
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGroupBox, QPushButton, QSizePolicy
 

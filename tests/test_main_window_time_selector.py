@@ -5,8 +5,13 @@ import pytest
 # Skip entire module if Qt is not available
 pytest.importorskip("PySide6")
 
+try:
+    import PySide6.QtGui
+except ImportError:
+    pytest.skip("PySide6 not usable", allow_module_level=True)
+
 from gsdv.ui.main_window import MainWindow, TimeWindowSelector
-from gsdv.plot.plot_widget import SingleChannelPlot
+from gsdv.plot.plot_widget import MultiChannelPlot
 from gsdv.config.preferences import UserPreferences
 
 @pytest.fixture
@@ -31,7 +36,7 @@ class TestMainWindowTimeWindowSelector:
         
         assert window.time_window_selector.window_seconds() == 60.0
         # Check plot also updated
-        assert isinstance(window._plot_area, SingleChannelPlot)
+        assert isinstance(window._plot_area, MultiChannelPlot)
         assert window._plot_area._window_seconds == 60.0
 
     def test_changing_selector_updates_preferences(self, main_window, qtbot):
@@ -48,9 +53,9 @@ class TestMainWindowTimeWindowSelector:
         
         assert main_window._plot_area._window_seconds == 30.0
 
-    def test_plot_area_is_single_channel_plot(self, main_window):
-        """Plot area is initialized as SingleChannelPlot."""
-        assert isinstance(main_window._plot_area, SingleChannelPlot)
+    def test_plot_area_is_multi_channel_plot(self, main_window):
+        """Plot area is initialized as MultiChannelPlot."""
+        assert isinstance(main_window._plot_area, MultiChannelPlot)
 
     def test_plot_area_has_correct_settings(self, qtbot):
         """Plot area has unit initialized from preferences."""
@@ -58,4 +63,4 @@ class TestMainWindowTimeWindowSelector:
         window = MainWindow(preferences=prefs)
         qtbot.addWidget(window)
         
-        assert window._plot_area._unit == "kgf"
+        assert window._plot_area._force_unit == "kgf"

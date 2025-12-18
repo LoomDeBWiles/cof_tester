@@ -5,6 +5,11 @@ import pytest
 # Skip entire module if Qt is not available
 pytest.importorskip("PySide6")
 
+try:
+    import PySide6.QtGui
+except ImportError:
+    pytest.skip("PySide6 not usable", allow_module_level=True)
+
 from PySide6.QtCore import Qt
 from gsdv.ui.main_window import TimeWindowSelector
 

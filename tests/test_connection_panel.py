@@ -5,6 +5,11 @@ import pytest
 # Skip entire module if Qt is not available
 pytest.importorskip("PySide6")
 
+try:
+    import PySide6.QtGui
+except ImportError:
+    pytest.skip("PySide6 not usable", allow_module_level=True)
+
 from gsdv.models import CalibrationInfo
 from gsdv.ui import ConnectionPanel, MainWindow, SensorInfoDisplay, is_valid_ipv4
 
