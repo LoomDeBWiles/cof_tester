@@ -16,7 +16,12 @@ from pathlib import Path
 _SAFE_PREFIX_PATTERN = re.compile(r"^[a-zA-Z0-9_.\-]*$")
 
 # Characters to strip from prefix (reserved on Windows and generally problematic)
-_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+# Includes space to ensure sanitized output is valid per _SAFE_PREFIX_PATTERN
+_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f ]')
+
+# Pattern matching unsafe characters in extension (anything that isn't alphanumeric)
+# Prevents path traversal attacks via extension parameter
+_UNSAFE_EXTENSION_CHARS = re.compile(r"[^a-zA-Z0-9]")
 
 
 def sanitize_prefix(prefix: str) -> str:
@@ -60,6 +65,24 @@ def is_valid_prefix(prefix: str) -> bool:
     return bool(_SAFE_PREFIX_PATTERN.match(prefix))
 
 
+def sanitize_extension(extension: str) -> str:
+    """Sanitize a file extension for filesystem safety.
+
+    Removes any characters that could enable path traversal or other
+    filesystem attacks. Only alphanumeric characters are allowed.
+
+    Args:
+        extension: File extension (with or without leading dot).
+
+    Returns:
+        Sanitized extension containing only alphanumeric characters.
+    """
+    # Strip leading dots first
+    ext = extension.lstrip(".")
+    # Remove all non-alphanumeric characters (including path separators)
+    return _UNSAFE_EXTENSION_CHARS.sub("", ext)
+
+
 def generate_filename(
     extension: str,
     prefix: str = "",
@@ -80,11 +103,9 @@ def generate_filename(
         Generated filename string.
 
     Raises:
-        ValueError: If extension is empty or part_number is out of range.
+        ValueError: If extension is empty (or becomes empty after sanitization)
+            or part_number is out of range.
     """
-    if not extension:
-        raise ValueError("Extension cannot be empty")
-
     if part_number is not None and (part_number < 1 or part_number > 999):
         raise ValueError("Part number must be between 1 and 999")
 
@@ -108,8 +129,10 @@ def generate_filename(
     if part_number is not None:
         parts.append(f"part{part_number:03d}")
 
-    # Normalize extension (remove leading dot if present)
-    ext = extension.lstrip(".")
+    # Sanitize extension (remove path traversal characters, keep only alphanumeric)
+    ext = sanitize_extension(extension)
+    if not ext:
+        raise ValueError("Extension cannot be empty")
 
     return "_".join(parts) + "." + ext
 
@@ -168,6 +191,6 @@ def preview_filename(
         parts.append(safe_prefix)
     parts.append("YYYYMMDD_HHMMSS")
 
-    ext = extension.lstrip(".")
+    ext = sanitize_extension(extension)
 
     return "_".join(parts) + "." + ext
