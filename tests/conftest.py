@@ -28,6 +28,7 @@ if not _qt_is_available():
     collect_ignore.append("test_connection_panel.py")
     collect_ignore.append("test_integration_simulator.py")
     collect_ignore.append("test_main_window.py")
+    collect_ignore.append("test_plot_widget.py")
     collect_ignore.append("test_ui_accessibility.py")
 
 
