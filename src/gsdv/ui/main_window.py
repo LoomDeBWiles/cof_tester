@@ -7,7 +7,7 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -675,7 +675,7 @@ class MainWindow(QMainWindow):
         self._plot_area = MultiChannelPlot(buffer=None)
         self._plot_area.set_window_seconds(self._preferences.time_window_seconds)
         self._plot_area.set_units(self._preferences.force_unit, self._preferences.torque_unit)
-        
+
         # Connect channel selector
         self._channel_selector.channel_toggled.connect(self._plot_area.set_channel_visible)
 
@@ -685,6 +685,11 @@ class MainWindow(QMainWindow):
         self._numeric_display = NumericDisplay()
         self._numeric_display.setMaximumWidth(280)
         middle_layout.addWidget(self._numeric_display, stretch=0)
+
+        # Set up timer for updating numeric display at display rate
+        self._numeric_update_timer = QTimer(self)
+        self._numeric_update_timer.setInterval(int(1000 / 30))  # 30 Hz update rate
+        self._numeric_update_timer.timeout.connect(self._update_numeric_display)
 
         main_layout.addLayout(middle_layout, stretch=1)
 
@@ -992,6 +997,27 @@ class MainWindow(QMainWindow):
     def _on_bias_shortcut(self) -> None:
         """Handle Ctrl+B shortcut for bias/tare."""
         self.bias_requested.emit()
+
+    def _update_numeric_display(self) -> None:
+        """Update numeric display with latest channel values."""
+        latest_values = self._plot_area.get_latest_values()
+        if latest_values is None:
+            return
+
+        for channel, (value, unit) in latest_values.items():
+            self._numeric_display.update_value(channel, value, unit)
+
+    def start_display_updates(self) -> None:
+        """Start updating the numeric display."""
+        if not self._numeric_update_timer.isActive():
+            self._numeric_update_timer.start()
+        self._plot_area.start()
+
+    def stop_display_updates(self) -> None:
+        """Stop updating the numeric display."""
+        self._numeric_update_timer.stop()
+        self._plot_area.stop()
+        self._numeric_display.clear_values()
 
     # Public API for accessing child widgets
     @property
