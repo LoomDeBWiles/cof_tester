@@ -237,13 +237,13 @@ class AsyncFileWriter:
         with self._state_lock:
             self._state = WriterState.STOPPED
 
-    def write(self, sample: tuple) -> bool:
+    def write(self, sample: Any) -> bool:
         """Write a sample to the queue (non-blocking).
 
         If the queue is full, the sample is dropped and counted in statistics.
 
         Args:
-            sample: Sample tuple to write. Format depends on formatter.
+            sample: Sample tuple or object to write. Format depends on formatter.
 
         Returns:
             True if sample was queued, False if dropped.
@@ -292,8 +292,12 @@ class AsyncFileWriter:
             # Write header if provided
             if self._header:
                 self._file.write(self._header)
-                if not self._header.endswith("\n"):
-                    self._file.write("\n")
+                if not self._header.endswith("\n") and not self._header.endswith("\r"):
+                     # Add terminator if header doesn't imply one (heuristic)
+                     # But safer to just check if we need one or if header is just preamble
+                     # If header is multi-line, it might have its own newlines.
+                     # We usually want a terminator after header.
+                     self._file.write(self._line_terminator)
 
             buffer: list[str] = []
             last_flush = time.monotonic()
@@ -309,7 +313,7 @@ class AsyncFileWriter:
                     if sample is None:
                         # Sentinel received, exit loop
                         break
-                    line = self._formatter(sample) + "\n"
+                    line = self._formatter(sample) + self._line_terminator
                     buffer.append(line)
                 except queue.Empty:
                     pass
@@ -331,7 +335,7 @@ class AsyncFileWriter:
                 try:
                     sample = self._queue.get_nowait()
                     if sample is not None:
-                        line = self._formatter(sample) + "\n"
+                        line = self._formatter(sample) + self._line_terminator
                         self._file.write(line)
                         with self._stats_lock:
                             self._samples_written += 1
