@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
@@ -28,6 +30,9 @@ from PySide6.QtWidgets import (
 
 from gsdv.config.preferences import UserPreferences
 from gsdv.ui.settings_dialog import SettingsDialog
+
+if TYPE_CHECKING:
+    from gsdv.models import CalibrationInfo
 
 
 class ChannelSelector(QGroupBox):
@@ -68,8 +73,32 @@ class ChannelSelector(QGroupBox):
             self._checkboxes[channel].setChecked(enabled)
 
 
+def is_valid_ipv4(ip_string: str) -> bool:
+    """Validate an IPv4 address string.
+
+    Args:
+        ip_string: The string to validate as an IPv4 address.
+
+    Returns:
+        True if the string is a valid IPv4 address, False otherwise.
+    """
+    try:
+        ipaddress.IPv4Address(ip_string)
+        return True
+    except (ipaddress.AddressValueError, ValueError):
+        return False
+
+
 class ConnectionPanel(QGroupBox):
-    """Widget for sensor connection controls."""
+    """Widget for sensor connection controls.
+
+    Provides IP address input with validation, connect/disconnect button,
+    and connection status indicator.
+
+    Signals:
+        connect_requested: Emitted when user requests connection with valid IP.
+        disconnect_requested: Emitted when user requests disconnection.
+    """
 
     connect_requested = Signal(str)
     disconnect_requested = Signal()
@@ -90,10 +119,16 @@ class ConnectionPanel(QGroupBox):
         self._ip_input.setPlaceholderText("192.168.1.1")
         self._ip_input.setMinimumWidth(140)
         self._ip_input.returnPressed.connect(self._on_connect_clicked)
+        self._ip_input.textChanged.connect(self._on_ip_text_changed)
         layout.addWidget(self._ip_input)
+
+        self._validation_label = QLabel()
+        self._validation_label.setFixedWidth(16)
+        layout.addWidget(self._validation_label)
 
         self._connect_button = QPushButton("Connect")
         self._connect_button.clicked.connect(self._on_connect_clicked)
+        self._connect_button.setEnabled(False)
         layout.addWidget(self._connect_button)
 
         separator = QFrame()
@@ -111,12 +146,28 @@ class ConnectionPanel(QGroupBox):
 
         layout.addStretch()
 
+    def _on_ip_text_changed(self, text: str) -> None:
+        """Handle IP input text changes for validation."""
+        ip = text.strip()
+        if not ip:
+            self._validation_label.setText("")
+            self._validation_label.setToolTip("")
+            self._connect_button.setEnabled(False)
+        elif is_valid_ipv4(ip):
+            self._validation_label.setText("")
+            self._validation_label.setToolTip("")
+            self._connect_button.setEnabled(True)
+        else:
+            self._validation_label.setText("")
+            self._validation_label.setToolTip("Invalid IPv4 address")
+            self._connect_button.setEnabled(False)
+
     def _on_connect_clicked(self) -> None:
         if self._connected:
             self.disconnect_requested.emit()
         else:
             ip = self._ip_input.text().strip()
-            if ip:
+            if ip and is_valid_ipv4(ip):
                 self.connect_requested.emit(ip)
 
     def _update_status_indicator(self) -> None:
@@ -125,10 +176,15 @@ class ConnectionPanel(QGroupBox):
             f"background-color: {color}; border-radius: 6px;"
         )
 
+    def is_ip_valid(self) -> bool:
+        """Check if the current IP input is a valid IPv4 address."""
+        return is_valid_ipv4(self._ip_input.text().strip())
+
     def set_connected(self, connected: bool, status_text: str = "") -> None:
         """Update connection state display."""
         self._connected = connected
         self._connect_button.setText("Disconnect" if connected else "Connect")
+        self._connect_button.setEnabled(connected or self.is_ip_valid())
         self._ip_input.setEnabled(not connected)
         self._status_label.setText(status_text or ("Connected" if connected else "Disconnected"))
         self._update_status_indicator()

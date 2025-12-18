@@ -128,3 +128,56 @@ You don't implement features. You improve the process.
 ```
 
 read your message from the architect
+
+## Bead Review Protocol
+
+Review and fix bootstrap quality. Fix bead issues (descriptions, dependencies, priorities, missing beads) but do not write application code.
+
+### Step 0: Create the 6 review beads
+
+```bash
+bd create "Review: Plan section traceability" -t task -p 1 -d "Sample 10 random task beads. For each: (1) Open the referenced plan.md section. (2) Verify the bead description matches what the section says. (3) Check if acceptance criteria align with plan requirements. FIX any mismatches by updating bead descriptions. Delete orphaned beads. Create missing beads for uncovered requirements. Output: Summary of changes made." --json
+
+bd create "Review: Stub file alignment" -t task -p 1 -d "Compare src/ structure against plan.md directory layout section. Note any: (1) Missing directories or files. (2) Extra files not in plan. (3) Naming mismatches. Output: List of structural discrepancies. Do not modify code files." --json
+
+bd create "Review: Task granularity and clarity" -t task -p 1 -d "For each open task bead: (1) Could an agent complete this in one session (~2-4 hours of work)? If too large, split it. (2) Is the description clear enough to start without asking questions? If vague, rewrite it. (3) Are acceptance criteria testable? If not, fix them. Output: Summary of beads modified/split." --json
+
+bd create "Review: Dependency graph sanity" -t task -p 1 -d "Run bv --robot-plan. Walk through the suggested execution order. For each step: Does it make sense to do this before what follows? Are there tasks that should be parallelizable but are sequenced? Are there missing dependencies where one task clearly needs another's output? FIX issues using bd dep add/remove. Output: Summary of dependency changes made." --json
+
+bd create "Review: Critical path priorities" -t task -p 1 -d "Run bv --robot-insights. Compare Bottlenecks list against bead priorities. Are high-bottleneck tasks marked P0/P1? Are any P0 tasks NOT bottlenecks (possibly over-prioritized)? Cross-check with plan.md milestones - does M1 have all its blockers at P0? FIX priorities using bd update <id> -p <priority>. Output: Summary of priority changes made." --json
+
+bd create "Review: Test strategy coverage" -t task -p 1 -d "Compare test-related beads against TESTING_PRINCIPLES.md and plan.md testing section. Are unit tests targeting behavior not implementation? Is the simulator bead sufficient for integration tests? Are edge cases covered? CREATE missing test beads. UPDATE existing beads if acceptance criteria conflict with testing principles. Output: Summary of test bead changes." --json
+```
+
+### Step 1: Wire the dependencies
+
+Run `bd list --json | jq '.[] | select(.title | startswith("Review:"))'` to get IDs, then:
+
+```bash
+# Execution order:
+#   1 (parallel): traceability + stub-alignment
+#   2: granularity (after 1)
+#   3: dependencies (after 2)
+#   4: priorities (after 3)
+#   5: test-strategy (after 4)
+
+bd dep add <granularity-id> <traceability-id> --type blocks
+bd dep add <granularity-id> <stub-alignment-id> --type blocks
+bd dep add <dependencies-id> <granularity-id> --type blocks
+bd dep add <priorities-id> <dependencies-id> --type blocks
+bd dep add <test-strategy-id> <priorities-id> --type blocks
+```
+
+### Step 2: Execute the queue
+
+```
+1. Run `bd ready --json`
+2. Pick a bead with title starting with "Review:"
+3. Execute the review and FIX issues as you find them
+4. Run `bd close <id> --reason "Done - [summary of fixes]"`
+5. Repeat until all 6 review beads are closed
+```
+
+Report back when complete with a summary of all changes made.
+
+#don't forget to marke the setup and review beads as REVIEWED in the json so the orchestrator doesn't pick them up

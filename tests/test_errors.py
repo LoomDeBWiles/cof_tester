@@ -7,8 +7,6 @@ from gsdv.errors import (
     CalibrationError,
     CalibrationParseError,
     CalibrationUnavailableError,
-    ConnectionRefusedError,
-    ConnectionTimeoutError,
     DirectoryNotWritableError,
     DiskFullError,
     ErrorCategory,
@@ -26,6 +24,8 @@ from gsdv.errors import (
     PacketParseError,
     ProtocolError,
     RecoveryAction,
+    SensorConnectionRefused,
+    SensorConnectionTimeout,
     SequenceGapError,
     SocketError,
     TcpCalibrationError,
@@ -117,9 +117,9 @@ class TestGsdvError:
 class TestNetworkErrors:
     """Tests for network error types."""
 
-    def test_connection_refused_error(self) -> None:
-        """ConnectionRefusedError has correct code and message."""
-        err = ConnectionRefusedError("192.168.1.50", 49152)
+    def test_sensor_connection_refused(self) -> None:
+        """SensorConnectionRefused has correct code and message."""
+        err = SensorConnectionRefused("192.168.1.50", 49152)
         assert err.code == "NET-001"
         assert err.category == ErrorCategory.NET
         assert err.recovery == RecoveryAction.RECONNECT
@@ -128,9 +128,9 @@ class TestNetworkErrors:
         assert err.context.host == "192.168.1.50"
         assert err.context.port == 49152
 
-    def test_connection_timeout_error(self) -> None:
-        """ConnectionTimeoutError includes timeout duration."""
-        err = ConnectionTimeoutError("10.0.0.5", 49151, 5.0)
+    def test_sensor_connection_timeout(self) -> None:
+        """SensorConnectionTimeout includes timeout duration."""
+        err = SensorConnectionTimeout("10.0.0.5", 49151, 5.0)
         assert err.code == "NET-002"
         assert err.recovery == RecoveryAction.RETRY
         assert "10.0.0.5:49151" in err.message
@@ -288,7 +288,7 @@ class TestErrorHierarchy:
 
     def test_network_error_is_gsdv_error(self) -> None:
         """NetworkError inherits from GsdvError."""
-        err = ConnectionRefusedError("host", 80)
+        err = SensorConnectionRefused("host", 80)
         assert isinstance(err, NetworkError)
         assert isinstance(err, GsdvError)
         assert isinstance(err, Exception)
@@ -314,7 +314,7 @@ class TestErrorHierarchy:
     def test_can_catch_by_category(self) -> None:
         """Errors can be caught by category base class."""
         errors = [
-            ConnectionRefusedError("host", 80),
+            SensorConnectionRefused("host", 80),
             MalformedPacketError("UDP", 100, 50),
             HttpCalibrationError("host"),
             DiskFullError("/path"),

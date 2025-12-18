@@ -97,7 +97,7 @@ class NetworkError(GsdvError):
         super().__init__(ErrorCategory.NET, code, message, recovery, context)
 
 
-class ConnectionRefusedError(NetworkError):
+class SensorConnectionRefused(NetworkError):
     """Connection was refused by the remote host."""
 
     def __init__(self, host: str, port: int, original_error: Optional[str] = None) -> None:
@@ -110,7 +110,7 @@ class ConnectionRefusedError(NetworkError):
         )
 
 
-class ConnectionTimeoutError(NetworkError):
+class SensorConnectionTimeout(NetworkError):
     """Connection attempt timed out."""
 
     def __init__(self, host: str, port: int, timeout_seconds: float) -> None:

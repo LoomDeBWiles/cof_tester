@@ -72,6 +72,8 @@ class UserPreferences:
     tcp_port: int = 49151
     http_port: int = 80
     connect_timeout_ms: int = 2000
+    auto_reconnect: bool = True
+    discovery_subnets: list[str] = field(default_factory=list)
 
     # Visualization (Section 14.2)
     channels_enabled: list[str] = field(
@@ -210,9 +212,10 @@ class PreferencesStore:
             # Rename atomically
             os.replace(tmp_path, self._path)
 
-            # Sync directory to ensure rename is durable
-            dir_fd = os.open(self._path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            os.fsync(dir_fd)
+            # Sync directory to ensure rename is durable (Unix only)
+            if hasattr(os, "O_DIRECTORY"):
+                dir_fd = os.open(self._path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                os.fsync(dir_fd)
         except BaseException:
             # Clean up temp file on any error
             if "tmp_path" in locals():
