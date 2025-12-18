@@ -7,6 +7,7 @@ Tests for:
 """
 
 import errno
+import itertools
 import os
 import socket
 import struct
@@ -352,7 +353,7 @@ class TestDisconnectMidRecording:
             (self._build_response(rdt_seq=2), ("192.168.1.100", 49152)),
             (self._build_response(rdt_seq=3), ("192.168.1.100", 49152)),
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(responses, itertools.repeat(socket.timeout()))
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
@@ -383,7 +384,7 @@ class TestDisconnectMidRecording:
             (self._build_response(rdt_seq=3), ("192.168.1.100", 49152)),
             (self._build_response(rdt_seq=4), ("192.168.1.100", 49152)),
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(responses, itertools.repeat(socket.timeout()))
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
@@ -410,7 +411,7 @@ class TestDisconnectMidRecording:
             for i in range(5)
         ]
         responses.append(OSError("Connection lost"))
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 20
+        mock_sock.recvfrom.side_effect = itertools.chain(responses, itertools.repeat(socket.timeout()))
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
@@ -449,7 +450,7 @@ class TestSequenceGapDetection:
             (self._build_response(rdt_seq=1), ("192.168.1.100", 49152)),
             (self._build_response(rdt_seq=5), ("192.168.1.100", 49152)),
         ]
-        mock_sock.recvfrom.side_effect = responses + [socket.timeout()] * 10
+        mock_sock.recvfrom.side_effect = itertools.chain(responses, itertools.repeat(socket.timeout()))
 
         engine = AcquisitionEngine(ip="192.168.1.100", receive_timeout=0.01)
         engine.start()
