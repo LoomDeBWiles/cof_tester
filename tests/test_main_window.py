@@ -157,13 +157,17 @@ class TestKeyboardShortcuts:
     def test_platform_aware_shortcuts_use_ctrl_modifier(self, main_window):
         """Shortcuts use Qt.Modifier.CTRL which maps to Cmd on macOS."""
         # Qt.Modifier.CTRL is automatically translated to Cmd on macOS
-        # This test verifies all shortcuts use the CTRL modifier consistently
+        # This test verifies all shortcuts include the CTRL modifier
+        # (some shortcuts may also include additional modifiers like SHIFT)
         for action in main_window.actions():
             shortcut = action.shortcut()
             if not shortcut.isEmpty():
-                # All our shortcuts should use CTRL modifier
+                # All our shortcuts should include CTRL modifier
                 key_combination = shortcut[0]
-                assert key_combination.keyboardModifiers() == Qt.KeyboardModifier.ControlModifier
+                modifiers = key_combination.keyboardModifiers()
+                assert modifiers & Qt.KeyboardModifier.ControlModifier, (
+                    f"Shortcut {shortcut.toString()} does not include ControlModifier"
+                )
 
 
 class TestMainWindowTheme:
