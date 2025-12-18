@@ -1,5 +1,10 @@
 """Main application window."""
 
+from __future__ import annotations
+
+import os
+import re
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -12,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStatusBar,
@@ -19,6 +25,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from gsdv.config.preferences import UserPreferences
+from gsdv.ui.settings_dialog import SettingsDialog
 
 
 class ChannelSelector(QGroupBox):
@@ -238,6 +247,14 @@ class RecordingControls(QGroupBox):
             self._output_path or "",
         )
         if folder:
+            if not os.access(folder, os.W_OK):
+                QMessageBox.warning(
+                    self,
+                    "Directory Not Writable",
+                    f"The selected directory is not writable:\n{folder}\n\n"
+                    "Please select a different directory.",
+                )
+                return
             self.set_output_path(folder)
             self.folder_selected.emit(folder)
 
@@ -321,8 +338,16 @@ class MainWindow(QMainWindow):
     DARK_THEME = "dark"
     LIGHT_THEME = "light"
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    # Signals
+    theme_changed = Signal(str)
+
+    def __init__(
+        self,
+        preferences: UserPreferences | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._preferences = preferences or UserPreferences()
         self._current_theme = self.LIGHT_THEME
         self._setup_ui()
         self._setup_shortcuts()
@@ -599,16 +624,23 @@ class MainWindow(QMainWindow):
     def toggle_theme(self) -> None:
         """Toggle between dark and light themes."""
         if self._current_theme == self.DARK_THEME:
-            self._current_theme = self.LIGHT_THEME
+            new_theme = self.LIGHT_THEME
         else:
-            self._current_theme = self.DARK_THEME
-        self._apply_theme()
+            new_theme = self.DARK_THEME
+        self.set_theme(new_theme)
 
     def set_theme(self, theme: str) -> None:
-        """Set the theme explicitly."""
-        if theme in (self.DARK_THEME, self.LIGHT_THEME):
-            self._current_theme = theme
-            self._apply_theme()
+        """Set the theme explicitly.
+
+        Emits theme_changed signal if the theme actually changes.
+        """
+        if theme not in (self.DARK_THEME, self.LIGHT_THEME):
+            return
+        if theme == self._current_theme:
+            return
+        self._current_theme = theme
+        self._apply_theme()
+        self.theme_changed.emit(theme)
 
     def current_theme(self) -> str:
         """Return the current theme name."""
@@ -616,7 +648,8 @@ class MainWindow(QMainWindow):
 
     def _on_settings_clicked(self) -> None:
         """Handle settings button click."""
-        pass
+        dialog = SettingsDialog(self._preferences, self)
+        dialog.exec()
 
     def _on_connect_shortcut(self) -> None:
         """Handle Ctrl+Enter shortcut for connect."""

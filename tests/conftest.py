@@ -1,20 +1,25 @@
 """Pytest configuration for GSDV tests."""
 
-import sys
+
+def _qt_is_available() -> bool:
+    """Check if Qt is fully available (Python bindings and native libraries)."""
+    try:
+        from PySide6 import QtWidgets  # noqa: F401
+
+        return True
+    except (ImportError, OSError):
+        return False
 
 
 def pytest_configure(config):
     """Disable pytest-qt if Qt is not available."""
-    try:
-        from PySide6 import QtGui  # noqa: F401
-    except ImportError:
-        # Qt not available, disable pytest-qt
+    if not _qt_is_available():
         config.pluginmanager.set_blocked("pytest-qt")
 
 
-# Disable Qt plugin loading at import time if EGL is missing
+# Disable Qt test modules if Qt is not available
 collect_ignore = []
-try:
-    from PySide6 import QtGui  # noqa: F401
-except ImportError:
+if not _qt_is_available():
     collect_ignore.append("test_integration_simulator.py")
+    collect_ignore.append("test_main_window.py")
+    collect_ignore.append("test_ui_accessibility.py")
