@@ -260,11 +260,33 @@ def cmd_log(args: argparse.Namespace) -> int:
 
 def cmd_simulate_sensor(args: argparse.Namespace) -> int:
     """Run the sensor simulator."""
-    from gsdv.diagnostics.sensor_simulator import SimulatorConfig, main as simulator_main
+    import time
 
-    # Re-invoke the simulator main with the same arguments
-    # This is a workaround to use the existing argument parsing in sensor_simulator.py
-    simulator_main()
+    from gsdv.diagnostics.sensor_simulator import SensorSimulator, SimulatorConfig
+
+    config = SimulatorConfig(
+        udp_port=args.udp_port,
+        tcp_port=args.tcp_port,
+        http_port=args.http_port,
+        sample_rate_hz=args.rate,
+        seed=args.seed,
+    )
+
+    print("Starting sensor simulator...")
+    print(f"  UDP RDT port:    {config.udp_port}")
+    print(f"  TCP command port: {config.tcp_port}")
+    print(f"  HTTP port:        {config.http_port}")
+    print(f"  Sample rate:      {config.sample_rate_hz} Hz")
+    print()
+    print("Press Ctrl+C to stop.")
+
+    with SensorSimulator(config) as sim:
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nStopping simulator...")
+
     return 0
 
 
