@@ -198,6 +198,83 @@ class ConnectionPanel(QGroupBox):
         self._ip_input.setText(ip)
 
 
+class SensorInfoDisplay(QGroupBox):
+    """Widget displaying sensor identification and calibration information.
+
+    Shows serial number, firmware version, and calibration factors (cpf/cpt)
+    when connected to a sensor.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("Sensor Info", parent)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QGridLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(4)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(3, 1)
+
+        # Serial number
+        serial_label = QLabel("Serial:")
+        serial_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(serial_label, 0, 0)
+
+        self._serial_value = QLabel("---")
+        self._serial_value.setStyleSheet("font-family: monospace;")
+        layout.addWidget(self._serial_value, 0, 1)
+
+        # Firmware version
+        firmware_label = QLabel("Firmware:")
+        firmware_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(firmware_label, 0, 2)
+
+        self._firmware_value = QLabel("---")
+        self._firmware_value.setStyleSheet("font-family: monospace;")
+        layout.addWidget(self._firmware_value, 0, 3)
+
+        # Counts per force (cpf)
+        cpf_label = QLabel("CPF:")
+        cpf_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        cpf_label.setToolTip("Counts per force (calibration factor)")
+        layout.addWidget(cpf_label, 1, 0)
+
+        self._cpf_value = QLabel("---")
+        self._cpf_value.setStyleSheet("font-family: monospace;")
+        self._cpf_value.setToolTip("Counts per force (calibration factor)")
+        layout.addWidget(self._cpf_value, 1, 1)
+
+        # Counts per torque (cpt)
+        cpt_label = QLabel("CPT:")
+        cpt_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        cpt_label.setToolTip("Counts per torque (calibration factor)")
+        layout.addWidget(cpt_label, 1, 2)
+
+        self._cpt_value = QLabel("---")
+        self._cpt_value.setStyleSheet("font-family: monospace;")
+        self._cpt_value.setToolTip("Counts per torque (calibration factor)")
+        layout.addWidget(self._cpt_value, 1, 3)
+
+    def update_info(self, calibration: CalibrationInfo) -> None:
+        """Update display with calibration information from sensor.
+
+        Args:
+            calibration: CalibrationInfo object containing sensor data.
+        """
+        self._serial_value.setText(calibration.serial_number or "N/A")
+        self._firmware_value.setText(calibration.firmware_version or "N/A")
+        self._cpf_value.setText(f"{calibration.counts_per_force:,.0f}")
+        self._cpt_value.setText(f"{calibration.counts_per_torque:,.0f}")
+
+    def clear_info(self) -> None:
+        """Clear all displayed information."""
+        self._serial_value.setText("---")
+        self._firmware_value.setText("---")
+        self._cpf_value.setText("---")
+        self._cpt_value.setText("---")
+
+
 class NumericDisplay(QGroupBox):
     """Widget showing real-time numeric values for each channel."""
 
@@ -396,6 +473,7 @@ class MainWindow(QMainWindow):
 
     # Signals
     theme_changed = Signal(str)
+    bias_requested = Signal()
 
     def __init__(
         self,
@@ -448,6 +526,10 @@ class MainWindow(QMainWindow):
         # Connection panel
         self._connection_panel = ConnectionPanel()
         main_layout.addWidget(self._connection_panel)
+
+        # Sensor info display
+        self._sensor_info = SensorInfoDisplay()
+        main_layout.addWidget(self._sensor_info)
 
         # Channel selector
         self._channel_selector = ChannelSelector()
@@ -723,7 +805,7 @@ class MainWindow(QMainWindow):
 
     def _on_bias_shortcut(self) -> None:
         """Handle Ctrl+B shortcut for bias/tare."""
-        pass
+        self.bias_requested.emit()
 
     # Public API for accessing child widgets
     @property
@@ -745,6 +827,11 @@ class MainWindow(QMainWindow):
     def recording_controls(self) -> RecordingControls:
         """Return the recording controls widget."""
         return self._recording_controls
+
+    @property
+    def sensor_info(self) -> SensorInfoDisplay:
+        """Return the sensor info display widget."""
+        return self._sensor_info
 
     def update_sample_rate(self, rate_hz: float) -> None:
         """Update the sample rate display in the status bar."""
