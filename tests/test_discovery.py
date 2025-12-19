@@ -1,6 +1,7 @@
 """Tests for sensor discovery module."""
 
 import ipaddress
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional

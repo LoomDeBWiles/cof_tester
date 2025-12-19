@@ -6,6 +6,7 @@ ATI NETrs force/torque sensors:
 - UDP RDT (Real-time Data Transfer) streaming protocol
 - TCP command interface for calibration and configuration
 - HTTP calibration retrieval
+- Bias (tare/zero) service for hardware and software zeroing
 - Subnet discovery for automatic sensor detection
 
 Example:
@@ -22,6 +23,12 @@ Example:
 """
 
 from gsdv.models import CalibrationInfo, SampleRecord
+from gsdv.protocols.bias import (
+    BiasService,
+    SoftZeroOffset,
+    capture_soft_zero,
+    send_device_bias,
+)
 from gsdv.protocols.discovery import (
     DiscoveredSensor,
     discover_sensors,
@@ -68,6 +75,11 @@ __all__ = [
     # Models
     "CalibrationInfo",
     "SampleRecord",
+    # Bias
+    "BiasService",
+    "SoftZeroOffset",
+    "capture_soft_zero",
+    "send_device_bias",
     # Discovery
     "DiscoveredSensor",
     "discover_sensors",
