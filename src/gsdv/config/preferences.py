@@ -95,6 +95,9 @@ class UserPreferences:
     filter_enabled: bool = False
     filter_cutoff_hz: float = 120.0
 
+    # Decimation (reduce effective sample rate)
+    decimation_factor: int = 10  # 1000Hz / 10 = 100Hz effective rate
+
     # Bias (Section 14.5)
     bias_mode: str = BiasMode.device.value
 

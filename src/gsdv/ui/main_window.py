@@ -407,22 +407,25 @@ class NumericDisplay(QGroupBox):
 
     def _setup_ui(self) -> None:
         layout = QGridLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
         for i, channel in enumerate(self.CHANNELS):
             name_label = QLabel(f"{channel}:")
             name_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            layout.addWidget(name_label, i // 3, (i % 3) * 2)
+            layout.addWidget(name_label, i, 0)
 
             value_label = QLabel("---")
-            value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            value_label.setMinimumWidth(80)
-            value_label.setStyleSheet("font-family: monospace;")
-            layout.addWidget(value_label, i // 3, (i % 3) * 2 + 1)
+            value_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            value_label.setMinimumWidth(120)
+            value_label.setStyleSheet("font-family: monospace; font-size: 14px;")
+            layout.addWidget(value_label, i, 1)
 
             self._labels[channel] = name_label
             self._value_labels[channel] = value_label
+
+        # Add stretch at the bottom to push content up
+        layout.setRowStretch(len(self.CHANNELS), 1)
 
     def update_value(self, channel: str, value: float, unit: str) -> None:
         """Update the displayed value for a channel."""

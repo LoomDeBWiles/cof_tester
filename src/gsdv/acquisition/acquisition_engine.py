@@ -84,6 +84,7 @@ class AcquisitionEngine:
         port: int = 49152,
         buffer_capacity: int = DEFAULT_BUFFER_CAPACITY,
         receive_timeout: float = 0.1,
+        decimation_factor: int = 1,
     ) -> None:
         """Initialize the acquisition engine.
 
@@ -92,10 +93,13 @@ class AcquisitionEngine:
             port: UDP port (default 49152).
             buffer_capacity: Ring buffer capacity in samples (default 60000).
             receive_timeout: Socket timeout in seconds for clean shutdown.
+            decimation_factor: Only store every Nth sample (1=all, 10=100Hz from 1000Hz).
         """
         self._ip = ip
         self._port = port
         self._receive_timeout = receive_timeout
+        self._decimation_factor = max(1, decimation_factor)
+        self._decimation_counter = 0
 
         self._buffer = RingBuffer(capacity=buffer_capacity)
         self._client: Optional[RdtClient] = None
@@ -291,6 +295,17 @@ class AcquisitionEngine:
                     if self._stop_event.is_set():
                         break
 
+                    # Update statistics for all received packets
+                    with self._stats_lock:
+                        self._packets_received += 1
+                        self._update_rate()
+
+                    # Apply decimation - only process every Nth sample
+                    self._decimation_counter += 1
+                    if self._decimation_counter < self._decimation_factor:
+                        continue
+                    self._decimation_counter = 0
+
                     # Write to ring buffer (never blocks)
                     self._buffer.append(
                         t_monotonic_ns=sample.t_monotonic_ns,
@@ -299,11 +314,6 @@ class AcquisitionEngine:
                         status=sample.status,
                         counts=sample.counts,
                     )
-
-                    # Update statistics
-                    with self._stats_lock:
-                        self._packets_received += 1
-                        self._update_rate()
 
                     # Queue for callback (non-blocking)
                     if self._sample_callback is not None:

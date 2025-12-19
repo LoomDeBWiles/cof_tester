@@ -82,9 +82,29 @@ GsdvError (base)
 ```
 gsdv [command]
       │
-      ├── (no args) → GUI placeholder (not yet implemented)
+      ├── (no args) → GUI with full functionality:
+      │               ├── Connection management
+      │               ├── Real-time plotting (with decimation)
+      │               ├── Recording to CSV via AsyncFileWriter
+      │               └── Bias/tare operations
       │
       └── (with args) → CLI dispatch to diagnostics/cli.py
+```
+
+## GUI Data Flow (main.py)
+
+```
+on_connect_requested(ip)
+         ↓
+    get_calibration_with_fallback(ip)
+         ↓
+    AcquisitionEngine(ip, decimation_factor=preferences.decimation_factor)
+         ↓
+    set_sample_callback(on_sample)  ──→  AsyncFileWriter.write() [if recording]
+         ↓
+    plot_area.set_buffer(engine.buffer)
+         ↓
+    engine.start()
 ```
 
 ## Conversion Flow

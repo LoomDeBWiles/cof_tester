@@ -88,11 +88,12 @@ class MultiChannelPlot(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Configure pyqtgraph for performance
+        # antialias=False recommended by pyqtgraph docs for better performance
         pg.setConfigOptions(antialias=False, useOpenGL=False)
 
         # Create PlotWidget
         self._plot_widget = pg.PlotWidget()
-        self._plot_widget.setBackground("w")
+        self._plot_widget.setBackground("#1e1e1e")  # Dark background
         layout.addWidget(self._plot_widget)
 
         # Get PlotItem for axis configuration
@@ -109,13 +110,12 @@ class MultiChannelPlot(QWidget):
         self._legend = self._plot_item.addLegend(offset=(10, 10))
 
         # Create the line plot items
+        # pen width=1 recommended by pyqtgraph docs for better performance
         for channel in self.CHANNEL_NAMES:
-            pen = pg.mkPen(color=self.CHANNEL_COLORS[channel], width=1.5)
-            # Create curve but don't add to legend automatically yet,
-            # as pyqtgraph adds it if name is provided.
+            pen = pg.mkPen(color=self.CHANNEL_COLORS[channel], width=1)
             line = self._plot_item.plot(name=channel, pen=pen)
-            line.setClipToView(True)
-            line.setDownsampling(auto=True, method="peak")
+            line.setClipToView(True)  # Only render visible data
+            line.setDownsampling(auto=True, method="peak")  # Auto-downsample preserving peaks
             self._lines[channel] = line
 
         # Show grid by default

@@ -326,6 +326,10 @@ class RecordingTab(QWidget):
         self._decimation_factor.setValue(1)
         perf_layout.addRow("Decimation Factor:", self._decimation_factor)
 
+        decimation_hint = QLabel("1 = 1000Hz, 10 = 100Hz, 100 = 10Hz. Reconnect to apply.")
+        decimation_hint.setStyleSheet("color: gray; font-size: 11px;")
+        perf_layout.addRow("", decimation_hint)
+
         layout.addWidget(perf_group)
 
         # Rotation group
@@ -360,7 +364,7 @@ class RecordingTab(QWidget):
             self._log_format.setCurrentIndex(index)
 
         self._flush_interval.setValue(prefs.flush_interval_ms)
-        self._decimation_factor.setValue(prefs.log_decimation_factor)
+        self._decimation_factor.setValue(prefs.decimation_factor)
         self._rotation_enabled.setChecked(prefs.rotation_enabled)
         self._rotate_interval.setValue(prefs.rotate_interval_minutes)
         self._rotate_max_bytes.setValue(prefs.rotate_max_bytes // 1_000_000)
@@ -370,7 +374,7 @@ class RecordingTab(QWidget):
         prefs.filename_prefix = self._filename_prefix.text()
         prefs.log_format = self._log_format.currentData()
         prefs.flush_interval_ms = self._flush_interval.value()
-        prefs.log_decimation_factor = self._decimation_factor.value()
+        prefs.decimation_factor = self._decimation_factor.value()
         prefs.rotation_enabled = self._rotation_enabled.isChecked()
         prefs.rotate_interval_minutes = self._rotate_interval.value()
         prefs.rotate_max_bytes = self._rotate_max_bytes.value() * 1_000_000

@@ -95,6 +95,7 @@ UserPreferences:
 ├── logging: format, directory, rotation_size, rotation_time, prefix
 ├── bias: mode (device|soft), soft_zero_counts
 ├── filter: enabled, cutoff_hz
+├── decimation_factor: int (1=1000Hz, 10=100Hz)  # Controls acquisition rate
 ├── transform: dx, dy, dz, rx, ry, rz
 └── buffer: ring_capacity_samples
 ```
@@ -115,17 +116,30 @@ UserPreferences:
 | Add time window | Add to `TIME_WINDOWS` list in `main_window.py` |
 | Change plot colors | Edit `CHANNEL_COLORS` dict in `plot_widget.py` |
 
+## Plot Performance Optimizations
+
+Per [pyqtgraph documentation](https://pyqtgraph.readthedocs.io/en/latest/api_reference/graphicsItems/plotdataitem.html):
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `antialias` | `False` | Disable antialiasing for speed |
+| `pen width` | `1` | Wider pens cause significant slowdown |
+| `setClipToView` | `True` | Only render visible data |
+| `setDownsampling` | `auto=True, method="peak"` | Auto-downsample preserving peaks/valleys |
+
 ## Gotchas
 
 **Thread-safe updates**: Never call Qt methods from callback thread. Use `QMetaObject.invokeMethod()` or signals.
 
-**Plot performance**: pyqtgraph handles 60fps but only with <100k points visible. Tier selection is critical.
+**Plot performance**: Use pyqtgraph's built-in `setDownsampling(auto=True, method="peak")` and `setClipToView(True)`. Avoid pen width > 1 and antialiasing.
 
 **Preference persistence**: Uses `platformdirs` for OS-appropriate config location. Don't hardcode paths.
 
 **Modal dialogs**: `SettingsDialog.exec()` blocks. Apply changes after dialog closes, not during.
 
 **Dual Y-axis**: Force on left (N), torque on right (N·m). Scaling is independent.
+
+**Decimation setting**: Changes to `decimation_factor` in Settings require disconnect/reconnect to take effect.
 
 ## Dependencies
 

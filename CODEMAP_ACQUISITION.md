@@ -12,11 +12,13 @@
 ## Data Flow
 
 ```
-RdtClient.receive_samples()
+RdtClient.receive_samples()  [1000Hz from sensor]
            ↓
     [receive thread]
            ↓
-    RingBuffer.append(sample)
+    decimation check (every Nth sample)
+           ↓
+    RingBuffer.append(sample)  [100Hz with decimation_factor=10]
            ↓
     ├→ get_latest(n) → numpy arrays
     └→ callback(sample) [optional, separate thread]
@@ -70,8 +72,9 @@ Main thread              Receive thread           Callback thread
 
 | Parameter | Default | Purpose |
 |-----------|---------|---------|
-| `buffer_capacity` | `60000` | Samples (60s at 1000Hz) |
+| `buffer_capacity` | `60000` | Samples (60s at 1000Hz, or 600s at 100Hz with decimation) |
 | `receive_timeout` | `0.1` | Socket timeout (seconds) |
+| `decimation_factor` | `1` | Store every Nth sample (10 = 100Hz from 1000Hz sensor) |
 | `callback` | `None` | Optional per-sample notification |
 
 ## Statistics
@@ -91,6 +94,7 @@ Main thread              Receive thread           Callback thread
 | Increase buffer | Change `buffer_capacity` param (trades memory for history) |
 | Add stat field | Add to `AcquisitionStats` dataclass, update in receive loop |
 | Change timeout | Pass `receive_timeout` to constructor |
+| Change sample rate | Set `decimation_factor` (10 = 100Hz, 1 = 1000Hz) in preferences |
 
 ## Gotchas
 

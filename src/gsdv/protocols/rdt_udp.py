@@ -108,14 +108,15 @@ class RdtClient:
         self,
         ip: str,
         port: int = RDT_PORT,
-        receive_buffer_size: int = 65536,
+        receive_buffer_size: int = 2_097_152,  # 2MB buffer for 1000Hz streaming
     ) -> None:
         """Initialize RDT client.
 
         Args:
             ip: Sensor IP address.
             port: UDP port (default 49152).
-            receive_buffer_size: Socket receive buffer size in bytes.
+            receive_buffer_size: Socket receive buffer size in bytes (default 2MB).
+                At 1000Hz with 36-byte packets, 2MB holds ~58k packets (~58 seconds).
         """
         self._ip = ip
         self._port = port
