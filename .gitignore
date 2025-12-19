@@ -54,3 +54,9 @@ test_namespace.py
 # OS
 .DS_Store
 Thumbs.db
+
+# Internal documentation (not for GitHub)
+AGENTS.md
+CODING_PRINCIPLES.md
+ORCHESTRATOR_GUIDE.md
+TESTING_PRINCIPLES.MD
